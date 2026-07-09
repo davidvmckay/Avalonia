@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Avalonia.Metadata;
 using Avalonia.Platform;
+using Avalonia.Platform.Surfaces;
 using Avalonia.Reactive;
 
 namespace Avalonia.Rendering;
@@ -11,16 +12,24 @@ internal class PlatformRenderInterfaceContextManager
     private readonly IPlatformGraphics? _graphics;
     private IPlatformRenderInterfaceContext? _backend;
     private OwnedDisposable<IPlatformGraphicsContext>? _gpuContext;
+    private readonly IPlatformGraphicsReadyStateFeature? _readyStateFeature;
     public event Action? ContextDisposed;
     public event Action<IPlatformRenderInterfaceContext>? ContextCreated;
 
     public PlatformRenderInterfaceContextManager(IPlatformGraphics? graphics)
     {
         _graphics = graphics;
+        _readyStateFeature = (_graphics as IPlatformGraphicsWithFeatures)
+            ?.TryGetFeature<IPlatformGraphicsReadyStateFeature>();
     }
 
+    public bool IsReady => _readyStateFeature?.IsReady ?? true;
+    
     public void EnsureValidBackendContext()
     {
+        if (!IsReady)
+            throw new InvalidOperationException("Platform graphics isn't ready yet");
+        
         if (_backend == null || _gpuContext?.Value.IsLost == true)
         {
             _backend?.Dispose();
@@ -34,10 +43,14 @@ internal class PlatformRenderInterfaceContextManager
 
             if (_graphics != null)
             {
-                if (_graphics.UsesSharedContext)
-                    _gpuContext = new OwnedDisposable<IPlatformGraphicsContext>(_graphics.GetSharedContext(), false);
-                else
-                    _gpuContext = new OwnedDisposable<IPlatformGraphicsContext>(_graphics.CreateContext(), true);
+                if (_readyStateFeature?.UsesContexts != false)
+                {
+                    if (_graphics.UsesSharedContext)
+                        _gpuContext =
+                            new OwnedDisposable<IPlatformGraphicsContext>(_graphics.GetSharedContext(), false);
+                    else
+                        _gpuContext = new OwnedDisposable<IPlatformGraphicsContext>(_graphics.CreateContext(), true);
+                }
             }
 
             _backend = AvaloniaLocator.Current.GetRequiredService<IPlatformRenderInterface>()
@@ -65,9 +78,22 @@ internal class PlatformRenderInterfaceContextManager
         return Disposable.Empty;
     }
     
-    public IRenderTarget CreateRenderTarget(IEnumerable<object> surfaces)
+    public IRenderTarget CreateRenderTarget(IEnumerable<IPlatformRenderSurface> surfaces)
     {
         EnsureValidBackendContext();
         return _backend!.CreateRenderTarget(surfaces);
+    }
+
+    public bool IsReadyToCreateRenderTarget(IEnumerable<IPlatformRenderSurface> surfaces)
+    {
+        if (_backend == null)
+            return IsReady;
+        return _backend.IsReadyToCreateRenderTarget(surfaces);
+    }
+
+    public void Reset()
+    {
+        _backend?.Dispose();
+        _backend = null;
     }
 }

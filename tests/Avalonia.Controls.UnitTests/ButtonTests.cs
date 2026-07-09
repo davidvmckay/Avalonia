@@ -1,5 +1,7 @@
 ﻿using System;
-using System.Windows.Input;
+using Avalonia.Controls.Presenters;
+using Avalonia.Controls.Templates;
+using Avalonia.Controls.UnitTests.Utils;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -9,7 +11,6 @@ using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.Threading;
 using Avalonia.UnitTests;
-using Avalonia.VisualTree;
 using Moq;
 using Xunit;
 using MouseButton = Avalonia.Input.MouseButton;
@@ -19,7 +20,7 @@ namespace Avalonia.Controls.UnitTests
     public class ButtonTests : ScopedTestBase
     {
         private MouseTestHelper _helper = new MouseTestHelper();
-        
+
         [Fact]
         public void Button_Is_Disabled_When_Command_Is_Disabled()
         {
@@ -100,6 +101,9 @@ namespace Avalonia.Controls.UnitTests
                 DataContext = new object(),
                 [!Button.CommandProperty] = new Binding("Command"),
             };
+            var root = new TestRoot { Child = target };
+
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
 
             Assert.True(target.IsEnabled);
             Assert.False(target.IsEffectivelyEnabled);
@@ -141,9 +145,9 @@ namespace Avalonia.Controls.UnitTests
             renderer.Setup(r => r.HitTest(It.IsAny<Point>(), It.IsAny<Visual>(), It.IsAny<Func<Visual, bool>>()))
                 .Returns<Point, Visual, Func<Visual, bool>>((p, r, f) =>
                     r.Bounds.Contains(p) ? new Visual[] { r } : new Visual[0]);
-            
+
             using var _ = UnitTestApplication.Start(TestServices.StyledWindow);
-            
+
             var root = new Window() { HitTesterOverride = renderer.Object };
             var target = new Button()
             {
@@ -188,7 +192,7 @@ namespace Avalonia.Controls.UnitTests
             target.Click += (s, e) => clicked = true;
 
             RaisePointerEntered(target);
-            RaisePointerMove(target, new Point(50,50));
+            RaisePointerMove(target, new Point(50, 50));
             RaisePointerPressed(target, 1, MouseButton.Left, new Point(50, 50));
             RaisePointerExited(target);
 
@@ -208,11 +212,11 @@ namespace Avalonia.Controls.UnitTests
             var pt = new Point(150, 50);
             renderer.Setup(r => r.HitTest(It.IsAny<Point>(), It.IsAny<Visual>(), It.IsAny<Func<Visual, bool>>()))
                 .Returns<Point, Visual, Func<Visual, bool>>((p, r, f) =>
-                    r.Bounds.Contains(p.Transform(r.RenderTransform.Value.Invert())) ?
+                    r.Bounds.Contains(p) ?
                     new Visual[] { r } : new Visual[0]);
-            
+
             using var _ = UnitTestApplication.Start(TestServices.StyledWindow);
-            
+
             var root = new Window() { HitTesterOverride = renderer.Object };
             var target = new Button()
             {
@@ -233,6 +237,8 @@ namespace Avalonia.Controls.UnitTests
             //note: button also may have not rectangular shape and only renderer hit testing is reliable
 
             bool clicked = false;
+
+            Dispatcher.UIThread.RunJobs(null, TestContext.Current.CancellationToken);
 
             target.Click += (s, e) => clicked = true;
 
@@ -290,7 +296,7 @@ namespace Avalonia.Controls.UnitTests
 
             target.Click += (s, e) => ++raised;
 
-            target.RaiseEvent(new RoutedEventArgs(AccessKeyHandler.AccessKeyPressedEvent));
+            target.RaiseEvent(new AccessKeyEventArgs("b", false));
 
             Assert.Equal(1, raised);
         }
@@ -298,16 +304,112 @@ namespace Avalonia.Controls.UnitTests
         [Fact]
         public void Raises_Click_When_AccessKey_Raised()
         {
-            var command = new TestCommand(p => p is bool value && value);
-            var target = new Button { Command = command };
+            var raised = 0;
+            var kd = new KeyboardDevice();
+            using var app = UnitTestApplication.Start(TestServices.StyledWindow
+                .With(
+                    accessKeyHandler: () => new AccessKeyHandler(),
+                    keyboardDevice: () => kd)
+            );
 
+            var impl = CreateMockTopLevelImpl();
+            var command = new TestCommand(p => p is bool value && value, _ => raised++);
+
+            Button target;
+            var root = new TestTopLevel(impl.Object)
+            {
+                Template = CreateTemplate(),
+                Content = target = new Button
+                {
+                    Content = "_A",
+                    Command = command,
+                    Template = new FuncControlTemplate<Button>((parent, scope) =>
+                    {
+                        return new ContentPresenter
+                        {
+                            Name = "PART_ContentPresenter",
+                            [~ContentPresenter.ContentProperty] = new TemplateBinding(Button.ContentProperty),
+                            [~ContentPresenter.ContentTemplateProperty] = new TemplateBinding(Button.ContentProperty),
+                            RecognizesAccessKey = true,
+                        }.RegisterInNameScope(scope);
+                    })
+                },
+            };
+
+            root.ApplyTemplate();
+            root.Presenter!.UpdateChild();
+            target.ApplyTemplate();
+            target.Presenter!.UpdateChild();
+            kd.SetFocusedElement(target, NavigationMethod.Unspecified, KeyModifiers.None);
+
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
+
+            const Key accessKey = Key.A;
+            const string accessKeySymbol = "a";
             target.CommandParameter = true;
-            Assert.True(target.IsEffectivelyEnabled);
+
+            RaiseAccessKey(root, accessKey, accessKeySymbol);
+
+            Assert.Equal(1, raised);
 
             target.CommandParameter = false;
-            Assert.False(target.IsEffectivelyEnabled);
+
+            RaiseAccessKey(root, accessKey, accessKeySymbol);
+
+            Assert.Equal(1, raised);
+
+            static FuncControlTemplate<TestTopLevel> CreateTemplate()
+            {
+                return new FuncControlTemplate<TestTopLevel>((x, scope) =>
+                    new ContentPresenter
+                    {
+                        Name = "PART_ContentPresenter",
+                        [~ContentPresenter.ContentProperty] = new TemplateBinding(ContentControl.ContentProperty),
+                        [~ContentPresenter.ContentTemplateProperty] = new TemplateBinding(ContentControl.ContentTemplateProperty)
+                    }.RegisterInNameScope(scope));
+            }
+
+            static Mock<ITopLevelImpl> CreateMockTopLevelImpl(bool setupProperties = false)
+            {
+                var topLevel = new Mock<ITopLevelImpl>();
+                if (setupProperties)
+                    topLevel.SetupAllProperties();
+                topLevel.Setup(x => x.RenderScaling).Returns(1);
+                topLevel.Setup(x => x.Compositor).Returns(RendererMocks.CreateDummyCompositor());
+                return topLevel;
+            }
+
+            static void RaiseAccessKey(IInputElement target, Key accessKey, string keySymbol)
+            {
+                KeyDown(target, Key.LeftAlt);
+                KeyDown(target, accessKey, keySymbol, KeyModifiers.Alt);
+                KeyUp(target, accessKey, keySymbol, KeyModifiers.Alt);
+                KeyUp(target, Key.LeftAlt, null);
+            }
+
+            static void KeyDown(IInputElement target, Key key, string? keySymbol = null, KeyModifiers modifiers = KeyModifiers.None)
+            {
+                target.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyDownEvent,
+                    Key = key,
+                    KeySymbol = keySymbol,
+                    KeyModifiers = modifiers,
+                });
+            }
+
+            static void KeyUp(IInputElement target, Key key, string? keySymbol = null, KeyModifiers modifiers = KeyModifiers.None)
+            {
+                target.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyUpEvent,
+                    Key = key,
+                    KeySymbol = keySymbol,
+                    KeyModifiers = modifiers,
+                });
+            }
         }
-        
+
         [Fact]
         public void Button_Invokes_Doesnt_Execute_When_Button_Disabled()
         {
@@ -317,11 +419,11 @@ namespace Avalonia.Controls.UnitTests
             target.IsEnabled = false;
             target.Click += (s, e) => ++raised;
 
-            target.RaiseEvent(new RoutedEventArgs(AccessKeyHandler.AccessKeyPressedEvent));
+            target.RaiseEvent(new AccessKeyEventArgs("b", false));
 
             Assert.Equal(0, raised);
         }
-        
+
         [Fact]
         public void Button_IsDefault_Works()
         {
@@ -331,13 +433,13 @@ namespace Avalonia.Controls.UnitTests
                 var target = new Button();
                 var window = new Window { Content = target };
                 window.Show();
-                
+
                 target.Click += (s, e) => ++raised;
 
                 target.IsDefault = false;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Enter));
                 Assert.Equal(0, raised);
-                
+
                 target.IsDefault = true;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Enter));
                 Assert.Equal(1, raised);
@@ -345,18 +447,39 @@ namespace Avalonia.Controls.UnitTests
                 target.IsDefault = false;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Enter));
                 Assert.Equal(1, raised);
-                
+
                 target.IsDefault = true;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Enter));
                 Assert.Equal(2, raised);
-                
+
                 window.Content = null;
                 // To check if handler was raised on the button, when it's detached, we need to pass it as a source manually.
                 window.RaiseEvent(CreateKeyDownEvent(Key.Enter, target));
                 Assert.Equal(2, raised);
             }
         }
-        
+
+        [Fact]
+        public void Button_IsDefault_Should_Not_Work_When_Button_Is_Not_Effectively_Visible()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var raised = 0;
+                var panel = new Panel();
+                var target = new Button();
+                panel.Children.Add(target);
+                var window = new Window { Content = panel };
+                window.Show();
+
+                target.Click += (s, e) => ++raised;
+
+                target.IsDefault = true;
+                panel.IsVisible = false;
+                window.RaiseEvent(CreateKeyDownEvent(Key.Enter));
+                Assert.Equal(0, raised);
+            }
+        }
+
         [Fact]
         public void Button_IsCancel_Works()
         {
@@ -366,13 +489,13 @@ namespace Avalonia.Controls.UnitTests
                 var target = new Button();
                 var window = new Window { Content = target };
                 window.Show();
-                
+
                 target.Click += (s, e) => ++raised;
 
                 target.IsCancel = false;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Escape));
                 Assert.Equal(0, raised);
-                
+
                 target.IsCancel = true;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Escape));
                 Assert.Equal(1, raised);
@@ -380,20 +503,142 @@ namespace Avalonia.Controls.UnitTests
                 target.IsCancel = false;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Escape));
                 Assert.Equal(1, raised);
-                
+
                 target.IsCancel = true;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Escape));
                 Assert.Equal(2, raised);
-                
+
                 window.Content = null;
                 window.RaiseEvent(CreateKeyDownEvent(Key.Escape, target));
                 Assert.Equal(2, raised);
             }
         }
 
-        private KeyEventArgs CreateKeyDownEvent(Key key, Interactive source = null)
+        [Fact]
+        public void Button_IsCancel_Should_Not_Work_When_Button_Is_Not_Effectively_Visible()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var raised = 0;
+                var panel = new Panel();
+                var target = new Button();
+                panel.Children.Add(target);
+                var window = new Window { Content = panel };
+                window.Show();
+
+                target.Click += (s, e) => ++raised;
+
+                target.IsCancel = true;
+                panel.IsVisible = false;
+                window.RaiseEvent(CreateKeyDownEvent(Key.Escape));
+                Assert.Equal(0, raised);
+            }
+        }
+
+        [Fact]
+        public void Button_CommandParameter_Does_Not_Change_While_Execution()
+        {
+            var target = new Button();
+            object? lastParamenter = "A";
+            var generator = new Random();
+            var onlyOnce = false;
+            var command = new TestCommand(parameter =>
+            {
+                if (!onlyOnce)
+                {
+                    onlyOnce = true;
+                    target.CommandParameter = generator.Next();
+                }
+                lastParamenter = parameter;
+                return true;
+            },
+            parameter =>
+            {
+                Assert.Equal(lastParamenter, parameter);
+            });
+            target.CommandParameter = lastParamenter;
+            target.Command = command;
+            var root = new TestRoot { Child = target };
+
+            (target as IClickableControl).RaiseClick();
+        }
+
+        [Fact]
+        public void Should_Not_Fire_Click_Event_On_Space_Key_When_It_Is_Not_Focus()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var raised = 0;
+                var target = new TextBox();
+                var button = new Button()
+                {
+                    Content = target,
+                };
+
+                var window = new Window { Content = button };
+                window.Show();
+
+                button.Click += (s, e) => ++raised;
+                target.Focus();
+                target.RaiseEvent(CreateKeyDownEvent(Key.Space));
+                target.RaiseEvent(CreateKeyUpEvent(Key.Space));
+                Assert.Equal(0, raised);
+            }
+        }
+
+        [Fact]
+        public void Button_Unpressed_When_Disabled()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var target = new Button()
+                {
+                    // Disabling a control implies focus loss, and focus loss
+                    // has its own code path to un-press the button. So we have
+                    // to avoid hitting that path to get an accurate result.
+                    Focusable = false,
+                };
+
+                var window = new Window { Content = target };
+                window.Show();
+
+                RaisePointerPressed(target, 1, MouseButton.Left, new Point(50, 50));
+
+                Assert.True(target.IsPressed);
+                Assert.False(target.IsFocused);
+                target.IsEnabled = false;
+                Assert.False(target.IsPressed);
+            }
+        }
+
+        [Fact]
+        public void Button_Unpressed_When_Focus_Lost()
+        {
+            using (UnitTestApplication.Start(TestServices.FocusableWindow))
+            {
+                var target = new Button();
+                var other = new Button();
+
+                var window = new Window { Content = new StackPanel { Children = { target, other } } };
+                window.Show();
+
+                RaisePointerPressed(target, 1, MouseButton.Left, new Point(50, 50));
+
+                Assert.True(target.IsPressed);
+                Assert.True(target.IsFocused);
+                Assert.True(other.Focus());
+                Assert.False(target.IsPressed);
+            }
+        }
+
+        private KeyEventArgs CreateKeyDownEvent(Key key, Interactive? source = null)
         {
             return new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, Source = source };
+        }
+
+        private KeyEventArgs CreateKeyUpEvent(Key key, Interactive? source = null)
+        {
+            return new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = key, Source = source };
         }
 
         private void RaisePointerPressed(Button button, int clickCount, MouseButton mouseButton, Point position)
@@ -421,50 +666,146 @@ namespace Avalonia.Controls.UnitTests
             _helper.Move(button, pos);
         }
 
-        private class TestCommand : ICommand
+
+
+        [Fact]
+        public void Button_LetterSpacing_Default_Value_Is_Zero()
         {
-            private readonly Func<object, bool> _canExecute;
-            private readonly Action<object> _execute;
-            private EventHandler _canExecuteChanged;
-            private bool _enabled = true;
+            var button = new Button();
+            Assert.Equal(0, button.LetterSpacing);
+        }
 
-            public TestCommand(bool enabled = true)
-            {
-                _enabled = enabled;
-                _canExecute = _ => _enabled;
-                _execute = _ => { };
-            }
+        [Fact]
+        public void Button_LetterSpacing_Can_Be_Set_And_Retrieved()
+        {
+            var button = new Button { LetterSpacing = 2.5 };
+            Assert.Equal(2.5, button.LetterSpacing);
+        }
 
-            public TestCommand(Func<object, bool> canExecute, Action<object> execute = null)
-            {
-                _canExecute = canExecute;
-                _execute = execute ?? (_ => { });
-            }
+        [Fact]
+        public void Button_LetterSpacing_Can_Be_Set_To_Negative_Value()
+        {
+            var button = new Button { LetterSpacing = -1.5 };
+            Assert.Equal(-1.5, button.LetterSpacing);
+        }
 
-            public bool IsEnabled
+        [Fact]
+        public void Button_LetterSpacing_Can_Be_Set_To_Zero()
+        {
+            var button = new Button { LetterSpacing = 5.0 };
+            button.LetterSpacing = 0;
+            Assert.Equal(0, button.LetterSpacing);
+        }
+
+        [Fact]
+        public void Button_LetterSpacing_Propagates_To_ContentPresenter()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
             {
-                get { return _enabled; }
-                set
+                var button = new Button
                 {
-                    if (_enabled != value)
-                    {
-                        _enabled = value;
-                        _canExecuteChanged?.Invoke(this, EventArgs.Empty);
-                    }
-                }
+                    Content = "Test",
+                    LetterSpacing = 3.0
+                };
+                var root = new TestRoot { Child = button };
+
+                button.ApplyTemplate();
+
+                var presenter = button.Presenter;
+                Assert.NotNull(presenter);
+                Assert.Equal(3.0, presenter.LetterSpacing);
             }
+        }
 
-            public int SubscriptionCount { get; private set; }
-
-            public event EventHandler CanExecuteChanged
+        [Fact]
+        public void Button_LetterSpacing_Updates_ContentPresenter_When_Changed()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
             {
-                add { _canExecuteChanged += value; ++SubscriptionCount; }
-                remove { _canExecuteChanged -= value; --SubscriptionCount; }
+                var button = new Button
+                {
+                    Content = "Test",
+                    LetterSpacing = 1.0
+                };
+                var root = new TestRoot { Child = button };
+
+                button.ApplyTemplate();
+                var presenter = button.Presenter;
+                Assert.NotNull(presenter);
+
+                button.LetterSpacing = 5.0;
+
+                Assert.Equal(5.0, presenter.LetterSpacing);
             }
+        }
 
-            public bool CanExecute(object parameter) => _canExecute(parameter);
+        [Fact]
+        public void Button_LetterSpacing_Works_With_Large_Values()
+        {
+            var button = new Button { LetterSpacing = 100.0 };
+            Assert.Equal(100.0, button.LetterSpacing);
+        }
 
-            public void Execute(object parameter) => _execute(parameter);
+        [Fact]
+        public void Button_LetterSpacing_Property_Inherits_Through_Visual_Tree()
+        {
+            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            {
+                var button = new Button
+                {
+                    Content = "Test",
+                    LetterSpacing = 2.0
+                };
+                var root = new TestRoot { Child = button };
+
+                button.ApplyTemplate();
+                button.Presenter?.UpdateChild();
+
+                // Verify the property value is accessible on the presenter
+                var presenter = button.Presenter;
+                Assert.NotNull(presenter);
+                Assert.Equal(2.0, presenter.LetterSpacing);
+            }
+        }
+
+        [Fact]
+        public void Button_LetterSpacing_Affects_TextBlock_Child_In_ContentPresenter()
+        {
+            using (UnitTestApplication.Start(TestServices.MockPlatformRenderInterface))
+            {
+                var button = new Button
+                {
+                    Content = "Test Text",
+                    LetterSpacing = 3.5
+                };
+                var root = new TestRoot { Child = button };
+
+                button.ApplyTemplate();
+                button.Presenter?.UpdateChild();
+
+                // Find the TextBlock that was created by ContentPresenter
+                var presenter = button.Presenter;
+                Assert.NotNull(presenter);
+
+                var textBlock = presenter.Child as TextBlock;
+                Assert.NotNull(textBlock);
+
+                // Verify LetterSpacing inherited to the TextBlock
+                Assert.Equal(3.5, textBlock.LetterSpacing);
+
+                // Force a measure to create TextLayout
+                textBlock.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+                // Verify the TextLayout actually has the LetterSpacing value
+                var textLayout = textBlock.TextLayout;
+                Assert.NotNull(textLayout);
+                Assert.Equal(3.5, textLayout.LetterSpacing);
+            }
+        }
+
+        private class TestTopLevel(ITopLevelImpl impl) : TopLevel(impl)
+        {
+
         }
     }
 }

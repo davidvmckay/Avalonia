@@ -7,9 +7,11 @@
 #define COMIMPL_H_INCLUDED
 
 #include <cstring>
+#include <memory>
+#include <utility>
 
 /**
- START_COM_CALL causes AddRef to be called at the beggining of a function.
+ START_COM_CALL causes AddRef to be called at the beginning of a function.
  When a function is exited, it causes ReleaseRef to be called.
  This ensures that the object cannot be destroyed whilst the function is running.
  For example: Window Show is called, which triggers an event, and user calls Close inside the event
@@ -100,8 +102,20 @@ public:
         return _obj;
     }
     
+    template<class TCast> ComPtr<TCast> dynamicCast()
+    {
+        if(_obj == nullptr)
+            return nullptr;
+        return dynamic_cast<TCast*>(_obj);
+    }
+    
     TInterface** getPPV()
     {
+        if(_obj)
+        {
+            _obj->Release();
+            _obj = nullptr;
+        }
         return &_obj;
     }
 
@@ -130,10 +144,90 @@ public:
     }
 };
 
+template<class T, class... Args>
+ComPtr<T> comnew(Args&&... args)
+{
+    return ComPtr<T>(new T(std::forward<Args>(args)...), true);
+}
+
+/**
+ * ComStaticPtr is a COM smart pointer for process-lifetime static singletons.
+ * It AddRef/Release on set/reset, but intentionally does NOT Release in its destructor
+ * to avoid crashes during app teardown when destruction order is undefined.
+ */
+template<class TInterface>
+class ComStaticPtr
+{
+private:
+    TInterface* _obj = nullptr;
+public:
+    ComStaticPtr() = default;
+    ~ComStaticPtr() = default;
+
+    ComStaticPtr(const ComPtr<TInterface>& ptr)
+    {
+        _obj = ptr;
+        if (_obj)
+            _obj->AddRef();
+    }
+
+    ComStaticPtr(const ComStaticPtr&) = delete;
+    ComStaticPtr(ComStaticPtr&&) = delete;
+    ComStaticPtr& operator=(const ComStaticPtr&) = delete;
+    ComStaticPtr& operator=(ComStaticPtr&&) = delete;
+
+    void set(TInterface* obj)
+    {
+        if (_obj == obj)
+            return;
+        if (_obj)
+            _obj->Release();
+        _obj = obj;
+        if (_obj)
+            _obj->AddRef();
+    }
+
+    void setNoAddRef(TInterface* obj)
+    {
+        if (_obj)
+            _obj->Release();
+        _obj = obj;
+    }
+
+    void reset()
+    {
+        if (_obj)
+        {
+            _obj->Release();
+            _obj = nullptr;
+        }
+    }
+
+    TInterface* getRaw() const { return _obj; }
+    
+    template<class TCast> ComPtr<TCast> getComPtr()
+    {
+        if (_obj == nullptr)
+            return nullptr;
+        return dynamic_cast<TCast*>(_obj);
+    }
+
+    operator TInterface*() const { return _obj; }
+    TInterface* operator->() const { return _obj; }
+};
+
+class ComObjectWeakRefToken
+{
+public:
+    bool Alive = true;
+};
+
+
 class ComObject : public virtual IUnknown
 {
 private:
     unsigned int _refCount;
+    std::shared_ptr<ComObjectWeakRefToken> _weakRefs;
 public:
     
     virtual ULONG AddRef()
@@ -157,10 +251,22 @@ public:
         _refCount = 1;
         
     }
+    
     virtual ~ComObject()
     {
+        if(_weakRefs)
+            _weakRefs->Alive = false;
     }
     
+    std::shared_ptr<ComObjectWeakRefToken> __GetWeakRefToken()
+    {
+        if(_weakRefs == nullptr)
+        {
+            _weakRefs = std::make_shared<ComObjectWeakRefToken>();
+        }
+        return _weakRefs;
+    }
+
     
     virtual ::HRESULT STDMETHODCALLTYPE QueryInterfaceImpl(REFIID riid, void **ppvObject) = 0;
     
@@ -187,6 +293,44 @@ protected:
 
 };
 
+
+template<class TClass>
+class ComObjectWeakPtr
+{
+private:
+    std::shared_ptr<ComObjectWeakRefToken> _token;
+    TClass* _rawPtr;
+public:
+    ComPtr<TClass> tryGet()
+    {
+        if(_rawPtr == nullptr)
+            return nullptr;
+        if(_token->Alive)
+            return _rawPtr;
+        return nullptr;
+    }
+    
+    template<class TCast> ComPtr<TCast> tryGetWithCast()
+    {
+        return tryGet().template dynamicCast<TCast>();
+    }
+    
+    ComObjectWeakPtr(TClass* obj)
+    {
+        _rawPtr = obj;
+        if(obj)
+            _token = obj->__GetWeakRefToken();
+    }
+    
+    ComObjectWeakPtr()
+    {
+        _rawPtr = nullptr;
+        _token = nullptr;
+    }
+    
+    bool operator==(const ComObjectWeakPtr& other) const { return _rawPtr == other._rawPtr; }
+    bool operator!=(const ComObjectWeakPtr& other) const { return _rawPtr != other._rawPtr; }
+};
 
 #define FORWARD_IUNKNOWN() \
 virtual ULONG Release() override \

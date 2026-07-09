@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
-using Avalonia.Layout;
 using Avalonia.Metadata;
-using Avalonia.Rendering;
+using Avalonia.Platform.Surfaces;
 using Avalonia.Rendering.Composition;
 
 namespace Avalonia.Platform
@@ -21,14 +20,19 @@ namespace Avalonia.Platform
     public interface ITopLevelImpl : IOptionalFeatureProvider, IDisposable
     {
         /// <summary>
+        /// Gets the scaling factor for Window positioning and sizing.
+        /// </summary>
+        double DesktopScaling { get; }
+
+        /// <summary>
+        /// Get the platform handle.
+        /// </summary>
+        IPlatformHandle? Handle { get; }
+        
+        /// <summary>
         /// Gets the client size of the toplevel.
         /// </summary>
         Size ClientSize { get; }
-
-        /// <summary>
-        /// Gets the total size of the toplevel, excluding shadows.
-        /// </summary>
-        Size? FrameSize { get; }
 
         /// <summary>
         /// Gets the scaling factor for the toplevel. This is used for rendering.
@@ -45,7 +49,7 @@ namespace Avalonia.Platform
         /// If you have some rendering platform that's tied to your particular windowing platform,
         /// just expose some toolkit-specific object (e. g. Func&lt;Gdk.Drawable&gt; in case of GTK#+Cairo)
         /// </remarks>
-        IEnumerable<object> Surfaces { get; }
+        IPlatformRenderSurface[] Surfaces { get; }
 
         /// <summary>
         /// Gets or sets a method called when the toplevel receives input.
@@ -123,16 +127,16 @@ namespace Avalonia.Platform
         /// Gets the current <see cref="WindowTransparencyLevel"/> of the TopLevel.
         /// </summary>
         WindowTransparencyLevel TransparencyLevel { get; }
-
-        /// <summary>
-        /// Sets the <see cref="PlatformThemeVariant"/> on the frame if it should be dark or light.
-        /// Also applies for the mobile status bar.
-        /// </summary>
-        void SetFrameThemeVariant(PlatformThemeVariant themeVariant);
         
         /// <summary>
         /// Gets the <see cref="AcrylicPlatformCompensationLevels"/> for the platform.        
         /// </summary>
         AcrylicPlatformCompensationLevels AcrylicCompensationLevels { get; }
+
+        /// <summary>
+        /// Sets the <see cref="PlatformThemeVariant"/> on the frame if it should be dark or light.
+        /// Also applies for the mobile status bar.
+        /// </summary>
+        void SetFrameThemeVariant(PlatformThemeVariant? themeVariant);
     }
 }

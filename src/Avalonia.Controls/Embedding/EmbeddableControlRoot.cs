@@ -1,9 +1,12 @@
 ﻿using System;
 using System.ComponentModel;
+using Avalonia.Automation.Peers;
+using Avalonia.Controls.Automation;
+using Avalonia.Controls.Automation.Peers;
 using Avalonia.Controls.Platform;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Platform;
-using Avalonia.Styling;
 
 namespace Avalonia.Controls.Embedding
 {
@@ -13,7 +16,7 @@ namespace Avalonia.Controls.Embedding
         {
         }
 
-        public EmbeddableControlRoot() : base(PlatformManager.CreateEmbeddableWindow())
+        public EmbeddableControlRoot() : base(PlatformManager.CreateEmbeddableTopLevel())
         {
         }
 
@@ -51,6 +54,17 @@ namespace Avalonia.Controls.Embedding
         }
 
         protected override Type StyleKeyOverride => typeof(EmbeddableControlRoot);
+
+        protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
+        {
+            base.OnApplyTemplate(e);
+            EnableVisualLayerManagerLayers();
+        }
+
+        protected override AutomationPeer OnCreateAutomationPeer()
+        {
+            return new EmbeddableControlRootAutomationPeer(this);
+        }
 
         public void Dispose()
         {

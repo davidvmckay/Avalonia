@@ -2,8 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
-using Avalonia.Collections;
 using Avalonia.Controls.Metadata;
 using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
@@ -18,7 +16,13 @@ namespace Avalonia.Controls.Notifications
     [PseudoClasses(":topleft", ":topright", ":bottomleft", ":bottomright", ":topcenter", ":bottomcenter")]
     public class WindowNotificationManager : TemplatedControl, IManagedNotificationManager
     {
-        private IList? _items;
+        private IList _items = new List<Control>();
+
+        /// <summary>
+        /// Currently active notifications.
+        /// </summary>
+        internal IEnumerable<NotificationCard> Notifications => _items.OfType<NotificationCard>();
+
         /// <summary>
         /// Defines the <see cref="Position"/> property.
         /// </summary>
@@ -80,9 +84,13 @@ namespace Avalonia.Controls.Notifications
         protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
         {
             base.OnApplyTemplate(e);
-            
+
             var itemsControl = e.NameScope.Find<Panel>("PART_Items");
-            _items = itemsControl?.Children;
+
+            if (itemsControl?.Children is not null)
+            {
+                _items = itemsControl.Children;
+            }
         }
 
         /// <inheritdoc/>
@@ -103,7 +111,7 @@ namespace Avalonia.Controls.Notifications
                 Show(content, NotificationType.Information);
             }
         }
-        
+
         /// <summary>
         /// Shows a Notification
         /// </summary>
@@ -113,15 +121,15 @@ namespace Avalonia.Controls.Notifications
         /// <param name="onClick">an Action to be run when the notification is clicked</param>
         /// <param name="onClose">an Action to be run when the notification is closed</param>
         /// <param name="classes">style classes to apply</param>
-        public async void Show(object content, 
-            NotificationType type, 
+        public void Show(object content,
+            NotificationType type,
             TimeSpan? expiration = null,
-            Action? onClick = null, 
-            Action? onClose = null, 
+            Action? onClick = null,
+            Action? onClose = null,
             string[]? classes = null)
         {
             Dispatcher.UIThread.VerifyAccess();
-            
+
             var notificationControl = new NotificationCard
             {
                 Content = content,
@@ -136,12 +144,11 @@ namespace Avalonia.Controls.Notifications
                     notificationControl.Classes.Add(@class);
                 }
             }
-            
+
             notificationControl.NotificationClosed += (sender, args) =>
             {
                 onClose?.Invoke();
-
-                _items?.Remove(sender);
+                _items.Remove(notificationControl);
             };
 
             notificationControl.PointerPressed += (sender, args) =>
@@ -151,24 +158,39 @@ namespace Avalonia.Controls.Notifications
                 (sender as NotificationCard)?.Close();
             };
 
-            Dispatcher.UIThread.Post(() =>
-            {
-                _items?.Add(notificationControl);
+            _items.Add(notificationControl);
 
-                if (_items?.OfType<NotificationCard>().Count(i => !i.IsClosing) > MaxItems)
-                {
-                    _items.OfType<NotificationCard>().First(i => !i.IsClosing).Close();
-                }
-            });
+            if (Notifications.Count(i => !i.IsClosing) > MaxItems)
+            {
+                Notifications.First(i => !i.IsClosing).Close();
+            }
 
             if (expiration == TimeSpan.Zero)
             {
                 return;
             }
 
-            await Task.Delay(expiration ?? TimeSpan.FromSeconds(5));
+            DispatcherTimer.RunOnce(notificationControl.Close, expiration ?? TimeSpan.FromSeconds(5));
+        }
 
-            notificationControl.Close();
+        /// <inheritdoc/>
+        public void Close(INotification notification) => Close(notification as object);
+
+        /// <inheritdoc/>
+        public void Close(object content)
+        {
+            Dispatcher.UIThread.VerifyAccess();
+
+            var cardsToClose = Notifications.Where(x => x.Content?.Equals(content) ?? false);
+            cardsToClose?.Do(x => x.Close());
+        }
+
+        /// <inheritdoc/>
+        public void CloseAll()
+        {
+            Dispatcher.UIThread.VerifyAccess();
+
+            Notifications.Do(x => x.Close());
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -179,6 +201,13 @@ namespace Avalonia.Controls.Notifications
             {
                 UpdatePseudoClasses(change.GetNewValue<NotificationPosition>());
             }
+        }
+
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnDetachedFromVisualTree(e);
+
+            _items.Clear();
         }
 
         /// <summary>
@@ -202,7 +231,7 @@ namespace Avalonia.Controls.Notifications
                 adornerLayer.Children.Remove(this);
                 AdornerLayer.SetAdornedElement(this, null);
             }
-            
+
             // Reinstall notification manager on template reapplied.
             var topLevel = (TopLevel)sender!;
             topLevel.TemplateApplied -= TopLevelOnTemplateApplied;

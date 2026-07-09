@@ -9,68 +9,64 @@ using Avalonia.Controls.Platform;
 using Avalonia.Input;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Avalonia.Logging;
 using Tmds.DBus.Protocol;
-using Tmds.DBus.SourceGenerator;
+using Avalonia.FreeDesktop.DBus;
 
 namespace Avalonia.FreeDesktop
 {
     internal class DBusMenuExporter
     {
         public static ITopLevelNativeMenuExporter? TryCreateTopLevelNativeMenu(IntPtr xid) =>
-            DBusHelper.Connection is null ? null : new DBusMenuExporterImpl(DBusHelper.Connection, xid);
+            DBusHelper.DefaultConnection is {} conn ?  new DBusMenuExporterImpl(conn, xid) : null;
 
-        public static INativeMenuExporter TryCreateDetachedNativeMenu(string path, Connection currentConnection) =>
+        public static INativeMenuExporter TryCreateDetachedNativeMenu(string path, DBusConnection currentConnection) =>
             new DBusMenuExporterImpl(currentConnection, path);
 
         public static string GenerateDBusMenuObjPath => $"/net/avaloniaui/dbusmenu/{Guid.NewGuid():N}";
 
-        private class DBusMenuExporterImpl : ComCanonicalDbusmenu, ITopLevelNativeMenuExporter, IDisposable
+        private sealed class DBusMenuExporterImpl : DBusHandler, IdbusmenuHandler, IdbusmenuProperties, ITopLevelNativeMenuExporter, IDisposable
         {
             private readonly Dictionary<int, NativeMenuItemBase> _idsToItems = new();
             private readonly Dictionary<NativeMenuItemBase, int> _itemsToIds = new();
-            private readonly HashSet<NativeMenu> _menus = new();
+            private readonly HashSet<NativeMenu> _menus = [];
             private readonly uint _xid;
             private readonly bool _appMenu = true;
-            private ComCanonicalAppMenuRegistrar? _registrar;
+            private Registrar? _registrar;
             private NativeMenu? _menu;
             private bool _disposed;
             private uint _revision = 1;
             private bool _resetQueued;
             private int _nextId = 1;
 
-            public DBusMenuExporterImpl(Connection connection, IntPtr xid)
+            public DBusMenuExporterImpl(DBusConnection connection, IntPtr xid)
+                : base(connection, GenerateDBusMenuObjPath, handlesChildPaths: false)
             {
-                InitBackingProperties();
-                Connection = connection;
                 _xid = (uint)xid.ToInt32();
-                Path = GenerateDBusMenuObjPath;
-                SetNativeMenu(new NativeMenu());
+                SetNativeMenu([]);
                 _ = InitializeAsync();
             }
 
-            public DBusMenuExporterImpl(Connection connection, string path)
+            public DBusMenuExporterImpl(DBusConnection connection, string path)
+                : base(connection, path, handlesChildPaths: false)
             {
-                InitBackingProperties();
-                Connection = connection;
                 _appMenu = false;
-                Path = path;
-                SetNativeMenu(new NativeMenu());
+                SetNativeMenu([]);
                 _ = InitializeAsync();
             }
 
-            private void InitBackingProperties()
-            {
-                BackingProperties.Version = 4;
-                BackingProperties.Status = string.Empty;
-                BackingProperties.TextDirection = string.Empty;
-                BackingProperties.IconThemePath = Array.Empty<string>();
-            }
+            uint IdbusmenuProperties.Version => 4;
+            string IdbusmenuProperties.TextDirection => "ltr";
+            string IdbusmenuProperties.Status => "normal";
+            string[] IdbusmenuProperties.IconThemePath => [];
 
-            protected override Connection Connection { get; }
+            ValueTask IdbusmenuHandler.HandleGetPropertyAsync(IdbusmenuHandler.GetPropertyContext context)
+                => context.Handle(this);
 
-            public override string Path { get; }
+            ValueTask IdbusmenuHandler.HandleGetAllPropertiesAsync(IdbusmenuHandler.GetAllPropertiesContext context)
+                => context.Handle(this);
 
-            protected override ValueTask<(uint revision, (int, Dictionary<string, DBusVariantItem>, DBusVariantItem[]) layout)> OnGetLayoutAsync(int parentId, int recursionDepth, string[] propertyNames)
+            ValueTask<(uint Revision, (int, Dictionary<string, VariantValue>, VariantValue[]) Layout)> IdbusmenuHandler.GetLayoutAsync(int parentId, int recursionDepth, string[] propertyNames)
             {
                 var menu = GetMenu(parentId);
                 var layout = GetLayout(menu.item, menu.menu, recursionDepth, propertyNames);
@@ -80,32 +76,32 @@ namespace Avalonia.FreeDesktop
                     OnIsNativeMenuExportedChanged?.Invoke(this, EventArgs.Empty);
                 }
 
-                return new ValueTask<(uint, (int, Dictionary<string, DBusVariantItem>, DBusVariantItem[]))>((_revision, layout));
+                return new ValueTask<(uint, (int, Dictionary<string, VariantValue>, VariantValue[]))>((_revision, layout));
             }
 
-            protected override ValueTask<(int, Dictionary<string, DBusVariantItem>)[]> OnGetGroupPropertiesAsync(int[] ids, string[] propertyNames)
+            ValueTask<(int, Dictionary<string, VariantValue>)[]> IdbusmenuHandler.GetGroupPropertiesAsync(int[] ids, string[] propertyNames)
                 => new(ids.Select(id => (id, GetProperties(GetMenu(id), propertyNames))).ToArray());
 
-            protected override ValueTask<DBusVariantItem> OnGetPropertyAsync(int id, string name) =>
-                new(GetProperty(GetMenu(id), name) ?? new DBusVariantItem("i", new DBusInt32Item(0)));
+            ValueTask<VariantValue> IdbusmenuHandler.GetPropertyAsync(int id, string name) =>
+                new(GetProperty(GetMenu(id), name) ?? VariantValue.Int32(0));
 
-            protected override ValueTask OnEventAsync(int id, string eventId, DBusVariantItem data, uint timestamp)
+            ValueTask IdbusmenuHandler.EventAsync(int id, string eventId, VariantValue data, uint timestamp)
             {
                 HandleEvent(id, eventId);
                 return new ValueTask();
             }
 
-            protected override ValueTask<int[]> OnEventGroupAsync((int, string, DBusVariantItem, uint)[] events)
+            ValueTask<int[]> IdbusmenuHandler.EventGroupAsync((int, string, VariantValue, uint)[] events)
             {
                 foreach (var e in events)
                     HandleEvent(e.Item1, e.Item2);
-                return new ValueTask<int[]>(Array.Empty<int>());
+                return new ValueTask<int[]>([]);
             }
 
-            protected override ValueTask<bool> OnAboutToShowAsync(int id) => new(false);
+            ValueTask<bool> IdbusmenuHandler.AboutToShowAsync(int id) => new(false);
 
-            protected override ValueTask<(int[] updatesNeeded, int[] idErrors)> OnAboutToShowGroupAsync(int[] ids) =>
-                new((Array.Empty<int>(), Array.Empty<int>()));
+            ValueTask<(int[] UpdatesNeeded, int[] IdErrors)> IdbusmenuHandler.AboutToShowGroupAsync(int[] ids) =>
+                new(([], []));
 
             private async Task InitializeAsync()
             {
@@ -113,7 +109,7 @@ namespace Avalonia.FreeDesktop
                 if (!_appMenu)
                     return;
 
-                _registrar = new ComCanonicalAppMenuRegistrar(Connection, "com.canonical.AppMenu.Registrar", "/com/canonical/AppMenu/Registrar");
+                _registrar = new Registrar(Connection, "com.canonical.AppMenu.Registrar", "/com/canonical/AppMenu/Registrar");
                 try
                 {
                     if (!_disposed)
@@ -135,10 +131,16 @@ namespace Avalonia.FreeDesktop
                     return;
                 _disposed = true;
                 // Fire and forget
-                _ = _registrar?.UnregisterWindowAsync(_xid);
+                _ = _registrar?.UnregisterWindowAsync(_xid)?.ContinueWith(t =>
+                {
+                    if (t.Exception != null)
+                    {
+                        Logger.TryGet(LogEventLevel.Warning, LogArea.Platform)
+                            ?.Log(this, "DBusMenu UnregisterWindowAsync failed: {Exception}", t.Exception);
+                    }
+                }, TaskContinuationOptions.OnlyOnFaulted);
+                Connection.RemoveMethodHandler(Path);
             }
-
-
 
             public bool IsNativeMenuExported { get; private set; }
 
@@ -146,7 +148,7 @@ namespace Avalonia.FreeDesktop
 
             public void SetNativeMenu(NativeMenu? menu)
             {
-                menu ??= new NativeMenu();
+                menu ??= [];
 
                 if (_menu is not null)
                     ((INotifyCollectionChanged)_menu.Items).CollectionChanged -= OnMenuItemsChanged;
@@ -174,7 +176,7 @@ namespace Avalonia.FreeDesktop
                 _idsToItems.Clear();
                 _itemsToIds.Clear();
                 _revision++;
-                EmitLayoutUpdated(_revision, 0);
+                Connection.EmitLayoutUpdated(Path, _revision, 0);
             }
 
             private void QueueReset()
@@ -216,39 +218,34 @@ namespace Avalonia.FreeDesktop
 
             private void OnItemPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e) => QueueReset();
 
-            private static readonly string[] s_allProperties = {
-                "type", "label", "enabled", "visible", "shortcut", "toggle-type", "children-display", "toggle-state", "icon-data"
-            };
+            private static readonly string[] s_allProperties = ["type", "label", "enabled", "visible", "shortcut", "toggle-type", "children-display", "toggle-state", "icon-data"];
 
-            private static DBusVariantItem? GetProperty((NativeMenuItemBase? item, NativeMenu? menu) i, string name)
+            private static VariantValue? GetProperty((NativeMenuItemBase? item, NativeMenu? menu) i, string name)
             {
                 var (it, menu) = i;
 
                 if (it is NativeMenuItemSeparator)
                 {
                     if (name == "type")
-                        return new DBusVariantItem("s", new DBusStringItem("separator"));
+                        return VariantValue.String("separator");
                 }
                 else if (it is NativeMenuItem item)
                 {
                     if (name == "type")
                         return null;
                     if (name == "label")
-                        return new DBusVariantItem("s", new DBusStringItem(item.Header ?? "<null>"));
+                        return VariantValue.String(item.Header ?? "<null>");
                     if (name == "enabled")
                     {
                         if (item.Menu is not null && item.Menu.Items.Count == 0)
-                            return new DBusVariantItem("b", new DBusBoolItem(false));
+                            return VariantValue.Bool(false);
                         if (!item.IsEnabled)
-                            return new DBusVariantItem("b", new DBusBoolItem(false));
+                            return VariantValue.Bool(false);
                         return null;
                     }
 
-                    if (name == "visible") {
-                        if (!item.IsVisible)
-                            return new DBusVariantItem("b", new DBusBoolItem(false));
-                        return new DBusVariantItem("b", new DBusBoolItem(true));
-                    }
+                    if (name == "visible")
+                        return VariantValue.Bool(item.IsVisible);
 
                     if (name == "shortcut")
                     {
@@ -256,30 +253,30 @@ namespace Avalonia.FreeDesktop
                             return null;
                         if (item.Gesture.KeyModifiers == 0)
                             return null;
-                        var lst = new List<DBusItem>();
+                        var lst = new Array<string>();
                         var mod = item.Gesture;
                         if (mod.KeyModifiers.HasAllFlags(KeyModifiers.Control))
-                            lst.Add(new DBusStringItem("Control"));
+                            lst.Add("Control");
                         if (mod.KeyModifiers.HasAllFlags(KeyModifiers.Alt))
-                            lst.Add(new DBusStringItem("Alt"));
+                            lst.Add("Alt");
                         if (mod.KeyModifiers.HasAllFlags(KeyModifiers.Shift))
-                            lst.Add(new DBusStringItem("Shift"));
+                            lst.Add("Shift");
                         if (mod.KeyModifiers.HasAllFlags(KeyModifiers.Meta))
-                            lst.Add(new DBusStringItem("Super"));
-                        lst.Add(new DBusStringItem(item.Gesture.Key.ToString()));
-                        return new DBusVariantItem("aas", new DBusArrayItem(DBusType.Array, new[] { new DBusArrayItem(DBusType.String, lst) }));
+                            lst.Add("Super");
+                        lst.Add(item.Gesture.Key.ToString());
+                        return new Array<Array<string>> { lst }.AsVariantValue();
                     }
 
                     if (name == "toggle-type")
                     {
-                        if (item.ToggleType == NativeMenuItemToggleType.CheckBox)
-                            return new DBusVariantItem("s", new DBusStringItem("checkmark"));
-                        if (item.ToggleType == NativeMenuItemToggleType.Radio)
-                            return new DBusVariantItem("s", new DBusStringItem("radio"));
+                        if (item.ToggleType == MenuItemToggleType.CheckBox)
+                            return VariantValue.String("checkmark");
+                        if (item.ToggleType == MenuItemToggleType.Radio)
+                            return VariantValue.String("radio");
                     }
 
-                    if (name == "toggle-state" && item.ToggleType != NativeMenuItemToggleType.None)
-                        return new DBusVariantItem("i", new DBusInt32Item(item.IsChecked ? 1 : 0));
+                    if (name == "toggle-state" && item.ToggleType != MenuItemToggleType.None)
+                        return VariantValue.Int32(item.IsChecked ? 1 : 0);
 
                     if (name == "icon-data")
                     {
@@ -292,56 +289,57 @@ namespace Avalonia.FreeDesktop
                                 var icon = loader.LoadIcon(item.Icon.PlatformImpl.Item);
                                 using var ms = new MemoryStream();
                                 icon.Save(ms);
-                                return new DBusVariantItem("ay", new DBusByteArrayItem(ms.ToArray()));
+                                return VariantValue.Array(ms.ToArray());
                             }
                         }
                     }
 
                     if (name == "children-display")
-                        return menu is not null ? new DBusVariantItem("s", new DBusStringItem("submenu")) : null;
+                    {
+                        if (menu is not null)
+                            return VariantValue.String("submenu");
+                        return null;
+                    }
                 }
 
                 return null;
             }
 
-            private static Dictionary<string, DBusVariantItem> GetProperties((NativeMenuItemBase? item, NativeMenu? menu) i, string[] names)
+            private static Dictionary<string, VariantValue> GetProperties((NativeMenuItemBase? item, NativeMenu? menu) i, string[] names)
             {
                 if (names.Length == 0)
                     names = s_allProperties;
-                var properties = new Dictionary<string, DBusVariantItem>();
+                var properties = new Dictionary<string, VariantValue>();
                 foreach (var n in names)
                 {
                     var v = GetProperty(i, n);
-                    if (v is not null)
-                        properties.Add(n, v);
+                    if (v.HasValue)
+                        properties.Add(n, v.Value);
                 }
 
                 return properties;
             }
 
-            private (int, Dictionary<string, DBusVariantItem>, DBusVariantItem[]) GetLayout(NativeMenuItemBase? item, NativeMenu? menu, int depth, string[] propertyNames)
+            private (int, Dictionary<string, VariantValue>, VariantValue[]) GetLayout(NativeMenuItemBase? item, NativeMenu? menu, int depth, string[] propertyNames)
             {
                 var id = item is null ? 0 : GetId(item);
                 var props = GetProperties((item, menu), propertyNames);
-                var children = depth == 0 || menu is null ? Array.Empty<DBusVariantItem>() : new DBusVariantItem[menu.Items.Count];
+                var children = depth == 0 || menu is null ? [] : new VariantValue[menu.Items.Count];
                 if (menu is not null)
                 {
                     for (var c = 0; c < children.Length; c++)
                     {
                         var ch = menu.Items[c];
                         var layout = GetLayout(ch, (ch as NativeMenuItem)?.Menu, depth == -1 ? -1 : depth - 1, propertyNames);
-                        children[c] = new DBusVariantItem("(ia{sv}av)", new DBusStructItem(new DBusItem[]
-                        {
-                            new DBusInt32Item(layout.Item1),
-                            new DBusArrayItem(DBusType.DictEntry, layout.Item2.Select(static x => new DBusDictEntryItem(new DBusStringItem(x.Key), x.Value)).ToArray()),
-                            new DBusArrayItem(DBusType.Variant, layout.Item3)
-                        }));
+                        children[c] = VariantValue.Struct(
+                            VariantValue.Int32(layout.Item1),
+                            new Dict<string, VariantValue>(layout.Item2).AsVariantValue(),
+                            VariantValue.ArrayOfVariant(layout.Item3));
                     }
                 }
 
                 return (id, props, children);
             }
-
 
             private void HandleEvent(int id, string eventId)
             {

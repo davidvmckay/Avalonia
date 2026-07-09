@@ -28,6 +28,11 @@ namespace Avalonia.Input.TextInput
         /// Fires when client wants to reset IME state
         /// </summary>
         public event EventHandler? ResetRequested;
+        
+        /// <summary>
+        /// Fires when client requests the input panel be opened.
+        /// </summary>
+        public event EventHandler? InputPaneActivationRequested;
 
         /// <summary>
         /// The visual that's showing the text
@@ -65,6 +70,12 @@ namespace Avalonia.Input.TextInput
         public virtual void SetPreeditText(string? preeditText) { }
 
         /// <summary>
+        /// Execute specific context menu actions
+        /// </summary>
+        /// <param name="action">The <see cref="ContextMenuAction"/> to perform</param>
+        public virtual void ExecuteContextMenuAction(ContextMenuAction action) { }
+
+        /// <summary>
         /// Sets the non-committed input string and cursor offset in that string
         /// </summary>
         public virtual void SetPreeditText(string? preeditText, int? cursorPos)
@@ -91,6 +102,11 @@ namespace Avalonia.Input.TextInput
         {
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        protected virtual void RaiseInputPaneActivationRequested()
+        {
+            InputPaneActivationRequested?.Invoke(this, EventArgs.Empty);
+        }
         
         protected virtual void RequestReset()
         {
@@ -99,4 +115,12 @@ namespace Avalonia.Input.TextInput
     }
 
     public record struct TextSelection(int Start, int End);
+
+    public enum ContextMenuAction
+    {
+        Copy,
+        Cut,
+        Paste,
+        SelectAll
+    }
 }

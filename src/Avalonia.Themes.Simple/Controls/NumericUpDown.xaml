@@ -4,6 +4,7 @@
   <ControlTheme x:Key="{x:Type NumericUpDown}"
                 TargetType="NumericUpDown">
     <Setter Property="Background" Value="{DynamicResource ThemeBackgroundBrush}" />
+    <Setter Property="PlaceholderForeground" Value="{DynamicResource ThemeForegroundLowBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}" />
     <Setter Property="BorderThickness" Value="{DynamicResource ThemeBorderThickness}" />
     <Setter Property="Padding" Value="4" />
@@ -14,6 +15,8 @@
                          HorizontalContentAlignment="Stretch"
                          VerticalContentAlignment="Stretch"
                          IsTabStop="False"
+                         Padding="0"
+                         MinWidth="0"
                          AllowSpin="{TemplateBinding AllowSpin}"
                          Background="{TemplateBinding Background}"
                          BorderBrush="{TemplateBinding BorderBrush}"
@@ -25,6 +28,7 @@
                      MinWidth="20"
                      Margin="4"
                      Padding="{TemplateBinding Padding}"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
                      AcceptsReturn="False"
@@ -34,7 +38,8 @@
                      Text="{TemplateBinding Text}"
                      TextAlignment="{TemplateBinding TextAlignment}"
                      TextWrapping="NoWrap"
-                     Watermark="{TemplateBinding Watermark}"
+                     PlaceholderText="{TemplateBinding PlaceholderText}"
+                     PlaceholderForeground="{TemplateBinding PlaceholderForeground}"
                      InnerLeftContent="{Binding InnerLeftContent, RelativeSource={RelativeSource TemplatedParent}}"
                      InnerRightContent="{Binding InnerRightContent, RelativeSource={RelativeSource TemplatedParent}}"/>
           </ButtonSpinner>

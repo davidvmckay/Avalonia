@@ -4,20 +4,17 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Avalonia.Controls.Platform.Surfaces;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Surfaces;
+using Avalonia.Rendering.Composition;
 using Xunit;
 using Path = System.IO.Path;
 
 #pragma warning disable CS0649
 
-#if AVALONIA_SKIA
 namespace Avalonia.Skia.RenderTests
-#else
-namespace Avalonia.Direct2D1.RenderTests.Media
-#endif
 {
     public class BitmapTests : TestBase
     {
@@ -29,10 +26,11 @@ namespace Avalonia.Direct2D1.RenderTests.Media
 
         class Framebuffer : ILockedFramebuffer, IFramebufferPlatformSurface
         {
-            public Framebuffer(PixelFormat fmt, PixelSize size)
+            public Framebuffer(PixelFormat fmt, AlphaFormat alphaFormat, PixelSize size)
             {
                 Format = fmt;
                 var bpp = fmt == PixelFormat.Rgb565 ? 2 : 4;
+                AlphaFormat = alphaFormat;
                 Size = size;
                 RowBytes = bpp * size.Width;
                 Address = Marshal.AllocHGlobal(size.Height * RowBytes);
@@ -43,6 +41,8 @@ namespace Avalonia.Direct2D1.RenderTests.Media
             public Vector Dpi { get; } = new Vector(96, 96);
 
             public PixelFormat Format { get; }
+
+            public AlphaFormat AlphaFormat { get; }
 
             public PixelSize Size { get; }
 
@@ -68,11 +68,11 @@ namespace Avalonia.Direct2D1.RenderTests.Media
         {
             var fmt = new PixelFormat(fmte);
             var testName = nameof(FramebufferRenderResultsShouldBeUsableAsBitmap) + "_" + fmt;
-            var fb = new Framebuffer(fmt, new PixelSize(80, 80));
+            var fb = new Framebuffer(fmt, AlphaFormat.Premul, new PixelSize(80, 80));
             var r = AvaloniaLocator.Current.GetRequiredService<IPlatformRenderInterface>();
             using(var cpuContext = r.CreateBackendContext(null))
-            using (var target = cpuContext.CreateRenderTarget(new object[] { fb }))
-            using (var ctx = target.CreateDrawingContext(false))
+            using (var target = cpuContext.CreateRenderTarget(new IPlatformRenderSurface[] { fb }))
+            using (var ctx = target.CreateDrawingContext(new IRenderTarget.RenderTargetSceneInfo(fb.Size, 1, CompositionTransparencyLevel.None), out _))
             {
                 ctx.Clear(Colors.Transparent);
                 ctx.PushOpacity(0.8, new Rect(0, 0, 80, 80));
@@ -94,7 +94,7 @@ namespace Avalonia.Direct2D1.RenderTests.Media
                     var rc = new Rect(0, 0, 60, 60);
                     ctx.DrawBitmap(bmp.PlatformImpl, 1, rc, rc);
                 }
-                rtb.Save(Path.Combine(OutputPath, testName + ".out.png"));
+                rtb.Save(Path.Combine(OutputPath, testName + ".out.png"), PngBitmapEncoderOptions.Default);
             }
             CompareImagesNoRenderer(testName);
         }
@@ -123,7 +123,7 @@ namespace Avalonia.Direct2D1.RenderTests.Media
 
             var name = nameof(WriteableBitmapShouldBeUsable) + "_" + fmt;
 
-            writeableBitmap.Save(Path.Combine(OutputPath, name + ".out.png"));
+            writeableBitmap.Save(Path.Combine(OutputPath, name + ".out.png"), PngBitmapEncoderOptions.Default);
             CompareImagesNoRenderer(name);
 
         }
@@ -215,7 +215,7 @@ namespace Avalonia.Direct2D1.RenderTests.Media
                             Assert.Equal(data.ToArray(), copyTo);
                         }
 
-                        b.Save(path);
+                        b.Save(path, PngBitmapEncoderOptions.Default);
                         CompareImagesNoRenderer(testName, expectedName);
                     }
                     finally
@@ -245,6 +245,35 @@ namespace Avalonia.Direct2D1.RenderTests.Media
             fixed (byte* pCopyTo = copyTo)
                 bmp.CopyPixels(default, new IntPtr(pCopyTo), data.Length, stride);
             Assert.Equal(data, copyTo);
+        }
+
+        [Fact]
+        public unsafe void Should_CopyPixels_With_Source_Rect()
+        {
+            var size = 80;
+            var partSize = 20;
+            var bitmap = new RenderTargetBitmap(new PixelSize(size, size));
+
+            using (var context = bitmap.CreateDrawingContext())
+            {
+                context.FillRectangle(Brushes.Black,
+                    new Rect(0, 0, bitmap.PixelSize.Width, bitmap.PixelSize.Height));
+                context.FillRectangle(Brushes.White, new Rect(partSize, partSize, partSize, partSize));
+            }
+
+            var bpp = bitmap.Format!.Value.BitsPerPixel / 8;
+            var buffer = new byte[partSize * partSize * bpp];
+
+            fixed (byte* pointer = buffer)
+            {
+                bitmap.CopyPixels(new PixelRect(partSize, partSize, partSize, partSize), (IntPtr)pointer,
+                    buffer.Length, partSize * bpp);
+            }
+
+            foreach (var t in buffer)
+            {
+                Assert.Equal(byte.MaxValue, t);
+            }
         }
     }
 }

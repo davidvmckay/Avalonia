@@ -1,24 +1,23 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Input;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
-using Avalonia.Controls.Utils;
+using Avalonia.Controls.UnitTests.Utils;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Platform;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.UnitTests;
 using Moq;
 using Xunit;
 
 namespace Avalonia.Controls.UnitTests
 {
-    public class MenuItemTests
+    public class MenuItemTests : ScopedTestBase
     {
-        private Mock<IPopupImpl> popupImpl;
+        private Mock<IPopupImpl>? _popupImpl;
 
         [Fact]
         public void Header_Of_Minus_Should_Apply_Separator_Pseudoclass()
@@ -64,6 +63,45 @@ namespace Avalonia.Controls.UnitTests
         }
 
         [Fact]
+        public void MenuItem_With_Styled_Command_Binding_Should_Be_Enabled_With_Child_Missing_Command()
+        {
+            using var app = Application();
+
+            var viewModel = new MenuViewModel("Parent")
+            {
+                Children = [new MenuViewModel("Child")]
+            };
+
+            var contextMenu = new ContextMenu
+            {
+                ItemsSource = new[] { viewModel },
+                Styles =
+                {
+                    new Style(x => x.OfType<MenuItem>())
+                    {
+                        Setters =
+                        {
+                            new Setter(MenuItem.HeaderProperty, new Binding("Header")),
+                            new Setter(MenuItem.ItemsSourceProperty, new Binding("Children")),
+                            new Setter(MenuItem.CommandProperty, new Binding("Command"))
+                        }
+                    }
+                }
+            };
+
+            var window = new Window { ContextMenu = contextMenu };
+            window.Show();
+            contextMenu.Open();
+
+            var parentMenuItem = Assert.IsType<MenuItem>(contextMenu.ContainerFromIndex(0));
+
+            Assert.Same(parentMenuItem.DataContext, viewModel);
+            Assert.Same(parentMenuItem.ItemsSource, viewModel.Children);
+            Assert.True(parentMenuItem.IsEnabled);
+            Assert.True(parentMenuItem.IsEffectivelyEnabled);
+        }
+
+        [Fact]
         public void MenuItem_Is_Disabled_When_Bound_Command_Is_Removed()
         {
             var viewModel = new
@@ -100,7 +138,9 @@ namespace Avalonia.Controls.UnitTests
                 [!MenuItem.CommandProperty] = new Binding("Command"),
             };
             var root = new TestRoot { Child = target };
-                
+
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
+
             Assert.True(target.IsEnabled);
             Assert.False(target.IsEffectivelyEnabled);
 
@@ -165,7 +205,7 @@ namespace Avalonia.Controls.UnitTests
             root.Child = null;
             Assert.Equal(0, command.SubscriptionCount);
         }
-        
+
         [Fact]
         public void MenuItem_Invokes_CanExecute_When_Added_To_Logical_Tree_And_CommandParameter_Changed()
         {
@@ -173,13 +213,15 @@ namespace Avalonia.Controls.UnitTests
             var target = new MenuItem { Command = command };
             var root = new TestRoot { Child = target };
 
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
+
             target.CommandParameter = true;
             Assert.True(target.IsEffectivelyEnabled);
 
             target.CommandParameter = false;
             Assert.False(target.IsEffectivelyEnabled);
         }
-        
+
         [Fact]
         public void MenuItem_Does_Not_Invoke_CanExecute_When_ContextMenu_Closed()
         {
@@ -196,8 +238,9 @@ namespace Avalonia.Controls.UnitTests
                 var window = new Window { Content = new Panel { ContextMenu = contextMenu } };
                 window.ApplyStyling();
                 window.ApplyTemplate();
-                window.Presenter.ApplyTemplate();
-                
+                window.Presenter!.ApplyTemplate();
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
+
                 Assert.True(target.IsEffectivelyEnabled);
                 target.Command = command;
                 Assert.Equal(0, canExecuteCallCount);
@@ -207,8 +250,9 @@ namespace Avalonia.Controls.UnitTests
 
                 command.RaiseCanExecuteChanged();
                 Assert.Equal(0, canExecuteCallCount);
-                
+
                 contextMenu.Open();
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
                 Assert.Equal(3, canExecuteCallCount);// 3 because popup is changing logical child and moreover we need to invalidate again after the item is attached to the visual tree
 
                 command.RaiseCanExecuteChanged();
@@ -218,7 +262,7 @@ namespace Avalonia.Controls.UnitTests
                 Assert.Equal(5, canExecuteCallCount);
             }
         }
-        
+
         [Fact]
         public void MenuItem_Does_Not_Invoke_CanExecute_When_MenuFlyout_Closed()
         {
@@ -236,8 +280,8 @@ namespace Avalonia.Controls.UnitTests
                 var window = new Window { Content = button };
                 window.ApplyStyling();
                 window.ApplyTemplate();
-                window.Presenter.ApplyTemplate();
-                
+                window.Presenter!.ApplyTemplate();
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
                 Assert.True(target.IsEffectivelyEnabled);
                 target.Command = command;
                 Assert.Equal(0, canExecuteCallCount);
@@ -249,6 +293,7 @@ namespace Avalonia.Controls.UnitTests
                 Assert.Equal(0, canExecuteCallCount);
 
                 flyout.ShowAt(button);
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
                 Assert.Equal(2, canExecuteCallCount); // 2 because we need to invalidate after the item is attached to the visual tree
 
                 command.RaiseCanExecuteChanged();
@@ -258,7 +303,7 @@ namespace Avalonia.Controls.UnitTests
                 Assert.Equal(4, canExecuteCallCount);
             }
         }
-        
+
         [Fact]
         public void MenuItem_Does_Not_Invoke_CanExecute_When_Parent_MenuItem_Closed()
         {
@@ -276,9 +321,11 @@ namespace Avalonia.Controls.UnitTests
                 var window = new Window { Content = new Panel { ContextMenu = contextMenu } };
                 window.ApplyStyling();
                 window.ApplyTemplate();
-                window.Presenter.ApplyTemplate();
+                window.Presenter!.ApplyTemplate();
                 contextMenu.Open();
-                
+
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
+
                 Assert.True(target.IsEffectivelyEnabled);
                 target.Command = command;
                 Assert.Equal(0, canExecuteCallCount);
@@ -374,10 +421,10 @@ namespace Avalonia.Controls.UnitTests
             window.Show();
             window.LayoutManager.ExecuteInitialLayoutPass();
 
-            var panel = Assert.IsType<StackPanel>(menu.Presenter.Panel);
+            var panel = Assert.IsType<StackPanel>(menu.Presenter!.Panel);
             Assert.Equal(2, panel.Children.Count);
 
-            for (var i = 0; i <  panel.Children.Count; i++)
+            for (var i = 0; i < panel.Children.Count; i++)
             {
                 var menuItem = Assert.IsType<MenuItem>(panel.Children[i]);
 
@@ -501,7 +548,7 @@ namespace Avalonia.Controls.UnitTests
 
             var window = new Window { Content = menu };
             window.Show();
-            
+
             Assert.False(menuItem1.IsChecked);
             Assert.True(menuItem2.IsChecked);
             Assert.False(menuItem3.IsChecked);
@@ -512,7 +559,48 @@ namespace Avalonia.Controls.UnitTests
             Assert.False(menuItem2.IsChecked);
             Assert.True(menuItem3.IsChecked);
         }
-        
+
+        [Fact]
+        public void Radio_MenuItem_In_Same_Group_In_MenuFlyout_Is_Unchecked()
+        {
+            using var app = Application();
+
+            var menuItem1 = new MenuItem
+            {
+                GroupName = "A",
+                IsChecked = true,
+                StaysOpenOnClick = true,
+                ToggleType = MenuItemToggleType.Radio,
+            };
+            var menuItem2 = new MenuItem
+            {
+                GroupName = "A",
+                IsChecked = false,
+                StaysOpenOnClick = true,
+                ToggleType = MenuItemToggleType.Radio,
+            };
+
+            var flyout = new MenuFlyout
+            {
+                Items =
+                {
+                    menuItem1,
+                    menuItem2,
+                }
+            };
+            var button = new Button { ContextFlyout = flyout };
+            var window = new Window { Content = button };
+
+            window.Show();
+            flyout.ShowAt(button);
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Loaded, TestContext.Current.CancellationToken);
+
+            menuItem2.IsChecked = true;
+
+            Assert.False(menuItem1.IsChecked);
+            Assert.True(menuItem2.IsChecked);
+        }
+
         [Fact]
         public void Radio_Menu_Group_Can_Be_Changed_In_Runtime()
         {
@@ -541,7 +629,7 @@ namespace Avalonia.Controls.UnitTests
 
             var window = new Window { Content = menu };
             window.Show();
-            
+
             Assert.False(menuItem1.IsChecked);
             Assert.True(menuItem2.IsChecked);
             Assert.False(menuItem3.IsChecked);
@@ -555,12 +643,12 @@ namespace Avalonia.Controls.UnitTests
 
             menuItem3.GroupName = null;
             menuItem1.IsChecked = true;
-            
+
             Assert.True(menuItem1.IsChecked);
             Assert.False(menuItem2.IsChecked);
             Assert.True(menuItem3.IsChecked);
         }
-        
+
         [Fact]
         public void Radio_MenuItem_In_Same_Group_But_Submenu_Is_Unchecked()
         {
@@ -600,7 +688,7 @@ namespace Avalonia.Controls.UnitTests
 
             var window = new Window { Content = menu };
             window.Show();
-            
+
             Assert.False(menuItem1.IsChecked);
             Assert.False(menuItem2.IsChecked);
             Assert.True(menuItem3.IsChecked);
@@ -768,63 +856,60 @@ namespace Avalonia.Controls.UnitTests
             Assert.False(menuItem4.IsChecked);
         }
 
+        [Fact]
+        public void MenuItem_CommandParameter_Does_Not_Change_While_Execution()
+        {
+            var target = new MenuItem();
+            object? lastParamenter = "A";
+            var generator = new Random();
+            var onlyOnce = false;
+            var command = new TestCommand(parameter =>
+            {
+                if (!onlyOnce)
+                {
+                    onlyOnce = true;
+                    target.CommandParameter = generator.Next();
+                }
+                lastParamenter = parameter;
+                return true;
+            },
+            parameter =>
+            {
+                Assert.Equal(lastParamenter, parameter);
+            });
+            target.CommandParameter = lastParamenter;
+            target.Command = command;
+            var root = new TestRoot { Child = target };
+
+            (target as IClickableControl).RaiseClick();
+        }
+
         private IDisposable Application()
         {
             var screen = new PixelRect(new PixelPoint(), new PixelSize(100, 100));
             var screenImpl = new Mock<IScreenImpl>();
             screenImpl.Setup(x => x.ScreenCount).Returns(1);
-            screenImpl.Setup(X => X.AllScreens).Returns( new[] { new Screen(1, screen, screen, true) });
+            screenImpl.Setup(X => X.AllScreens).Returns(new[] { new MockScreen(1, screen, screen, true) });
 
             var windowImpl = MockWindowingPlatform.CreateWindowMock();
-            popupImpl = MockWindowingPlatform.CreatePopupMock(windowImpl.Object);
-            popupImpl.SetupGet(x => x.RenderScaling).Returns(1);
-            windowImpl.Setup(x => x.CreatePopup()).Returns(popupImpl.Object);
+            _popupImpl = MockWindowingPlatform.CreatePopupMock(windowImpl.Object);
+            _popupImpl.SetupGet(x => x.RenderScaling).Returns(1);
+            windowImpl.Setup(x => x.CreatePopup()).Returns(_popupImpl.Object);
 
-            windowImpl.Setup(x => x.Screen).Returns(screenImpl.Object);
+            windowImpl.Setup(x => x.TryGetFeature(It.Is<Type>(t => t == typeof(IScreenImpl)))).Returns(screenImpl.Object);
 
             var services = TestServices.StyledWindow.With(
                 inputManager: new InputManager(),
                 windowImpl: windowImpl.Object,
-                windowingPlatform: new MockWindowingPlatform(() => windowImpl.Object, x => popupImpl.Object));
+                windowingPlatform: new MockWindowingPlatform(() => windowImpl.Object, x => _popupImpl.Object));
 
             return UnitTestApplication.Start(services);
         }
 
-        private class TestCommand : ICommand
-        {
-            private readonly Func<object, bool> _canExecute;
-            private readonly Action<object> _execute;
-            private EventHandler _canExecuteChanged;
-
-            public TestCommand(bool enabled = true)
-                : this(_ => enabled, _ => { })
-            {
-            }
-
-            public TestCommand(Func<object, bool> canExecute, Action<object> execute = null)
-            {
-                _canExecute = canExecute;
-                _execute = execute ?? (_ => { });
-            }
-
-            public int SubscriptionCount { get; private set; }
-
-            public event EventHandler CanExecuteChanged
-            {
-                add { _canExecuteChanged += value; ++SubscriptionCount; }
-                remove { _canExecuteChanged -= value; --SubscriptionCount; }
-            }
-
-            public bool CanExecute(object parameter) => _canExecute(parameter);
-
-            public void Execute(object parameter) => _execute(parameter);
-
-            public void RaiseCanExecuteChanged() => _canExecuteChanged?.Invoke(this, EventArgs.Empty);
-        }
 
         private record MenuViewModel(string Header)
         {
-            public IList<MenuViewModel> Children { get; set;}
+            public IList<MenuViewModel> Children { get; set; } = [];
         }
     }
 }

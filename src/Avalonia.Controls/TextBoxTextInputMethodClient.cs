@@ -2,6 +2,7 @@ using System;
 using Avalonia.Controls.Presenters;
 using Avalonia.Input.TextInput;
 using Avalonia.Media.TextFormatting;
+using Avalonia.Reactive;
 using Avalonia.Utilities;
 
 namespace Avalonia.Controls
@@ -10,6 +11,8 @@ namespace Avalonia.Controls
     {
         private TextBox? _parent;
         private TextPresenter? _presenter;
+        private bool _selectionChanged;
+        private bool _isInChange;
 
         public override Visual TextViewVisual => _presenter!;
 
@@ -21,7 +24,7 @@ namespace Avalonia.Controls
                 {
                     return "";
                 }
-                
+
                 if (_parent.CaretIndex != _presenter.CaretIndex)
                 {
                     _presenter.SetCurrentValue(TextPresenter.CaretIndexProperty, _parent.CaretIndex);
@@ -31,7 +34,7 @@ namespace Avalonia.Controls
                 {
                     _presenter.SetCurrentValue(TextPresenter.TextProperty, _parent.Text);
                 }
-                
+
                 var lineIndex = _presenter.TextLayout.GetLineIndexFromCharacterIndex(_presenter.CaretIndex, false);
 
                 var textLine = _presenter.TextLayout.TextLines[lineIndex];
@@ -115,6 +118,7 @@ namespace Avalonia.Controls
             if (_parent != null)
             {
                 _parent.PropertyChanged -= OnParentPropertyChanged;
+                _parent.Tapped -= OnParentTapped;
             }
 
             _parent = parent;
@@ -122,27 +126,36 @@ namespace Avalonia.Controls
             if (_parent != null)
             {
                 _parent.PropertyChanged += OnParentPropertyChanged;
+                _parent.Tapped += OnParentTapped;
             }
 
             var oldPresenter = _presenter;
 
             if (oldPresenter != null)
             {
+                oldPresenter.CurrentImClient = null;
                 oldPresenter.ClearValue(TextPresenter.PreeditTextProperty);
 
-                oldPresenter.CaretBoundsChanged -= (s,e) => RaiseCursorRectangleChanged();
+                oldPresenter.CaretBoundsChanged -= (s, e) => RaiseCursorRectangleChanged();
             }
 
             _presenter = presenter;
 
             if (_presenter != null)
             {
+
+                _presenter.CurrentImClient = this;
                 _presenter.CaretBoundsChanged += (s, e) => RaiseCursorRectangleChanged();
             }
 
             RaiseTextViewVisualChanged();
 
             RaiseCursorRectangleChanged();
+        }
+
+        private void OnParentTapped(object? sender, Input.TappedEventArgs e)
+        {
+            RaiseInputPaneActivationRequested();
         }
 
         public override void SetPreeditText(string? preeditText) => SetPreeditText(preeditText, null);
@@ -160,17 +173,18 @@ namespace Avalonia.Controls
 
         private static string GetTextLineText(TextLine textLine)
         {
+            if (textLine.Length == 0)
+            {
+                return string.Empty;
+            }
+
             var builder = StringBuilderCache.Acquire(textLine.Length);
 
             foreach (var run in textLine.TextRuns)
             {
                 if (run.Length > 0)
                 {
-#if NET6_0_OR_GREATER
                     builder.Append(run.Text.Span);
-#else
-                    builder.Append(run.Text.Span.ToArray());
-#endif
                 }
             }
 
@@ -179,6 +193,27 @@ namespace Avalonia.Controls
             StringBuilderCache.Release(builder);
 
             return lineText;
+        }
+
+        public override void ExecuteContextMenuAction(ContextMenuAction action)
+        {
+            base.ExecuteContextMenuAction(action);
+
+            switch (action)
+            {
+                case ContextMenuAction.Copy:
+                    _parent?.Copy();
+                    break;
+                case ContextMenuAction.Cut:
+                    _parent?.Cut();
+                    break;
+                case ContextMenuAction.Paste:
+                    _parent?.Paste();
+                    break;
+                case ContextMenuAction.SelectAll:
+                    _parent?.SelectAll();
+                    break;
+            }
         }
 
         private void OnParentPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -190,8 +225,30 @@ namespace Avalonia.Controls
 
             if (e.Property == TextBox.SelectionStartProperty || e.Property == TextBox.SelectionEndProperty)
             {
-                RaiseSelectionChanged();
+                if (_isInChange)
+                    _selectionChanged = true;
+                else
+                    RaiseSelectionChanged();
             }
+        }
+
+        internal IDisposable BeginChange()
+        {
+            if (_isInChange)
+                return Disposable.Empty;
+
+            _isInChange = true;
+            return Disposable.Create(RaiseEvents);
+        }
+
+        private void RaiseEvents()
+        {
+            _isInChange = false;
+
+            if (_selectionChanged)
+                RaiseSelectionChanged();
+
+            _selectionChanged = false;
         }
     }
 }

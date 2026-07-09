@@ -1,59 +1,61 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 using OpenQA.Selenium;
-using OpenQA.Selenium.Appium;
 using OpenQA.Selenium.Interactions;
 using Xunit;
 
 namespace Avalonia.IntegrationTests.Appium
 {
     [Collection("Default")]
-    public abstract class MenuTests
+    public abstract class MenuTests : TestBase, IDisposable
     {
-        private readonly AppiumDriver<AppiumWebElement> _session;
-
         public MenuTests(DefaultAppFixture fixture)
+            : base(fixture, "Menu")
         {
-            _session = fixture.Session;
-
-            var tabs = _session.FindElementByAccessibilityId("MainTabs");
-            var tab = tabs.FindElementByName("Menu");
-            tab.Click();
-
-            var reset = _session.FindElementByAccessibilityId("MenuClickedMenuItemReset");
+            var reset = Session.FindElementByAccessibilityId("MenuClickedMenuItemReset");
             reset.Click();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("None", clickedMenuItem.Text);
+        }
+
+        public override void Dispose()
+        {
+            // Click the reset button so that any menu still open gets closed
+            var reset = Session.FindElementByAccessibilityId("MenuClickedMenuItemReset");
+            reset?.Click();
+
+            base.Dispose();
         }
 
         [Fact]
         public void Click_Child()
         {
-            var rootMenuItem = _session.FindElementByAccessibilityId("RootMenuItem");
-            
+            var rootMenuItem = Session.FindElementByAccessibilityId("RootMenuItem");
+
             rootMenuItem.SendClick();
 
-            var childMenuItem = _session.FindElementByAccessibilityId("Child1MenuItem");
+            var childMenuItem = Session.FindElementByAccessibilityId("Child1MenuItem");
             childMenuItem.SendClick();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Child 1", clickedMenuItem.Text);
         }
 
         [Fact]
         public void Click_Grandchild()
         {
-            var rootMenuItem = _session.FindElementByAccessibilityId("RootMenuItem");
-            
+            var rootMenuItem = Session.FindElementByAccessibilityId("RootMenuItem");
+
             rootMenuItem.SendClick();
 
-            var childMenuItem = _session.FindElementByAccessibilityId("Child2MenuItem");
+            var childMenuItem = Session.FindElementByAccessibilityId("Child2MenuItem");
             childMenuItem.SendClick();
 
-            var grandchildMenuItem = _session.FindElementByAccessibilityId("GrandchildMenuItem");
+            var grandchildMenuItem = Session.FindElementByAccessibilityId("GrandchildMenuItem");
             grandchildMenuItem.SendClick();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Grandchild", clickedMenuItem.Text);
         }
 
@@ -62,12 +64,14 @@ namespace Avalonia.IntegrationTests.Appium
         {
             MovePointerOutOfTheWay();
 
-            new Actions(_session)
-                .KeyDown(Keys.Alt).KeyUp(Keys.Alt)
-                .SendKeys(Keys.Down + Keys.Enter)
-                .Perform();
+            var window = Session.FindElementByAccessibilityId("MainWindow");
+            window.Click();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            window.SendKeys(Keys.LeftAlt);
+            Thread.Sleep(150);
+            window.SendKeys(Keys.Down + Keys.Enter);
+
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Child 1", clickedMenuItem.Text);
         }
 
@@ -76,12 +80,14 @@ namespace Avalonia.IntegrationTests.Appium
         {
             MovePointerOutOfTheWay();
 
-            new Actions(_session)
-                .KeyDown(Keys.Alt).KeyUp(Keys.Alt)
-                .SendKeys(Keys.Down + Keys.Down + Keys.Right + Keys.Enter)
-                .Perform();
+            var window = Session.FindElementByAccessibilityId("MainWindow");
+            window.Click();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            window.SendKeys(Keys.LeftAlt);
+            Thread.Sleep(150);
+            window.SendKeys(Keys.Down + Keys.Down + Keys.Right + Keys.Enter);
+
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Grandchild", clickedMenuItem.Text);
         }
 
@@ -90,12 +96,16 @@ namespace Avalonia.IntegrationTests.Appium
         {
             MovePointerOutOfTheWay();
 
-            new Actions(_session)
-                .KeyDown(Keys.Alt).KeyUp(Keys.Alt)
-                .SendKeys("rc")
-                .Perform();
+            var window = Session.FindElementByAccessibilityId("MainWindow");
+            window.Click();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            window.SendKeys(Keys.LeftAlt);
+            Thread.Sleep(150);
+            window.SendKeys("r");
+            Thread.Sleep(75);
+            window.SendKeys("c");
+
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Child 1", clickedMenuItem.Text);
         }
 
@@ -104,55 +114,61 @@ namespace Avalonia.IntegrationTests.Appium
         {
             MovePointerOutOfTheWay();
 
-            new Actions(_session)
-                .KeyDown(Keys.Alt).KeyUp(Keys.Alt)
-                .SendKeys("rhg")
-                .Perform();
+            var window = Session.FindElementByAccessibilityId("MainWindow");
+            window.Click();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            window.SendKeys(Keys.LeftAlt);
+            Thread.Sleep(150);
+            window.SendKeys("r");
+            Thread.Sleep(75);
+            window.SendKeys("h");
+            Thread.Sleep(75);
+            window.SendKeys("g");
+
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Grandchild", clickedMenuItem.Text);
         }
 
         [PlatformFact(TestPlatforms.Windows)]
         public void Select_Child_With_Click_Arrow_Keys()
         {
-            var rootMenuItem = _session.FindElementByAccessibilityId("RootMenuItem");
+            var rootMenuItem = Session.FindElementByAccessibilityId("RootMenuItem");
             rootMenuItem.SendClick();
 
             MovePointerOutOfTheWay();
 
-            new Actions(_session)
+            new Actions(Session)
                 .SendKeys(Keys.Down + Keys.Enter)
                 .Perform();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Child 1", clickedMenuItem.Text);
         }
 
         [PlatformFact(TestPlatforms.Windows)]
         public void Select_Grandchild_With_Click_Arrow_Keys()
         {
-            var rootMenuItem = _session.FindElementByAccessibilityId("RootMenuItem");
+            var rootMenuItem = Session.FindElementByAccessibilityId("RootMenuItem");
             rootMenuItem.SendClick();
 
             MovePointerOutOfTheWay();
 
-            new Actions(_session)
+            new Actions(Session)
                 .SendKeys(Keys.Down + Keys.Down + Keys.Right + Keys.Enter)
                 .Perform();
 
-            var clickedMenuItem = _session.FindElementByAccessibilityId("ClickedMenuItem");
+            var clickedMenuItem = Session.FindElementByAccessibilityId("ClickedMenuItem");
             Assert.Equal("_Grandchild", clickedMenuItem.Text);
         }
 
         [PlatformFact(TestPlatforms.Windows)]
         public void Child_AcceleratorKey()
         {
-            var rootMenuItem = _session.FindElementByAccessibilityId("RootMenuItem");
+            var rootMenuItem = Session.FindElementByAccessibilityId("RootMenuItem");
 
             rootMenuItem.SendClick();
 
-            var childMenuItem = _session.FindElementByAccessibilityId("Child1MenuItem");
+            var childMenuItem = Session.FindElementByAccessibilityId("Child1MenuItem");
 
             Assert.Equal("Ctrl+O", childMenuItem.GetAttribute("AcceleratorKey"));
         }
@@ -161,12 +177,12 @@ namespace Avalonia.IntegrationTests.Appium
         public void PointerOver_Does_Not_Steal_Focus()
         {
             // Issue #7906
-            var textBox = _session.FindElementByAccessibilityId("MenuFocusTest");
+            var textBox = Session.FindElementByAccessibilityId("MenuFocusTest");
             textBox.Click();
 
             Assert.True(textBox.GetIsFocused());
 
-            var rootMenuItem = _session.FindElementByAccessibilityId("RootMenuItem");
+            var rootMenuItem = Session.FindElementByAccessibilityId("RootMenuItem");
             rootMenuItem.MovePointerOver();
 
             Assert.True(textBox.GetIsFocused());
@@ -175,9 +191,9 @@ namespace Avalonia.IntegrationTests.Appium
         private void MovePointerOutOfTheWay()
         {
             // Move the pointer to the menu tab item so that it's not over the menu in preparation
-            // for key press tests. This prevents the mouse accidentially selecting the wrong item
+            // for key press tests. This prevents the mouse accidentally selecting the wrong item
             // by hovering.
-            var tabs = _session.FindElementByAccessibilityId("MainTabs");
+            var tabs = Session.FindElementByAccessibilityId("Pager");
             var tab = tabs.FindElementByName("Menu");
             tab.MovePointerOver();
         }

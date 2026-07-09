@@ -35,6 +35,19 @@ public static class KnownPlatformGraphicsExternalImageHandleTypes
     /// A POSIX file descriptor that's exported by Vulkan using VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT or in a compatible way
     /// </summary>
     public const string VulkanOpaquePosixFileDescriptor = nameof(VulkanOpaquePosixFileDescriptor);
+    
+    /// <summary>
+    /// A NT handle that's been exported by Vulkan using VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT or in a compatible way
+    /// </summary>
+    public const string VulkanOpaqueNtHandle = nameof(VulkanOpaqueNtHandle);
+    
+    // A global shared handle that's been exported by Vulkan using VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT or in a compatible way
+    public const string VulkanOpaqueKmtHandle = nameof(VulkanOpaqueKmtHandle);
+
+    /// <summary>
+    /// A reference to IOSurface
+    /// </summary>
+    public const string IOSurfaceRef = nameof(IOSurfaceRef);
 }
 
 /// <summary>
@@ -57,4 +70,9 @@ public static class KnownPlatformGraphicsExternalSemaphoreHandleTypes
     
     /// A DXGI NT handle returned by ID3D12Device::CreateSharedHandle or ID3D11Fence::CreateSharedHandle
     public const string Direct3D12FenceNtHandle = nameof(Direct3D12FenceNtHandle);
+    
+    /// <summary>
+    /// A pointer to MTLSharedEvent object
+    /// </summary>
+    public const string MetalSharedEvent = nameof(MetalSharedEvent);
 }

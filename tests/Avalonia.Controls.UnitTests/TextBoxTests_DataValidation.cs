@@ -6,8 +6,12 @@ using System.Linq;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
+using Avalonia.Data.Core;
+using Avalonia.Harfbuzz;
 using Avalonia.Headless;
 using Avalonia.Markup.Data;
+using Avalonia.Markup.Xaml.MarkupExtensions;
+using Avalonia.Markup.Xaml.MarkupExtensions.CompiledBindings;
 using Avalonia.Platform;
 using Avalonia.UnitTests;
 using Moq;
@@ -15,7 +19,7 @@ using Xunit;
 
 namespace Avalonia.Controls.UnitTests
 {
-    public class TextBoxTests_DataValidation
+    public class TextBoxTests_DataValidation : ScopedTestBase
     {
         [Fact]
         public void Setter_Exceptions_Should_Set_Error_Pseudoclass()
@@ -25,7 +29,7 @@ namespace Avalonia.Controls.UnitTests
                 var target = new TextBox
                 {
                     DataContext = new ExceptionTest(),
-                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10), BindingMode.TwoWay),
+                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10)) { Mode = BindingMode.TwoWay },
                     Template = CreateTemplate(),
                 };
 
@@ -47,7 +51,7 @@ namespace Avalonia.Controls.UnitTests
                 var target = new TextBox
                 {
                     DataContext = new ExceptionTest(),
-                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10), BindingMode.TwoWay),
+                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10)) { Mode = BindingMode.TwoWay },
                     Template = CreateTemplate(),
                 };
 
@@ -56,9 +60,10 @@ namespace Avalonia.Controls.UnitTests
                 Assert.Null(DataValidationErrors.GetErrors(target));
                 target.Text = "20";
 
-                IEnumerable<object> errors = DataValidationErrors.GetErrors(target);
-                Assert.Single(errors);
-                Assert.IsType<InvalidOperationException>(errors.Single());
+                var errors = DataValidationErrors.GetErrors(target);
+                Assert.NotNull(errors);
+                var error = Assert.Single(errors);
+                Assert.IsType<InvalidOperationException>(error);
                 target.Text = "1";
                 Assert.Null(DataValidationErrors.GetErrors(target));
             }
@@ -72,7 +77,7 @@ namespace Avalonia.Controls.UnitTests
                 var target = new TextBox
                 {
                     DataContext = new ExceptionTest(),
-                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10), BindingMode.TwoWay),
+                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10)) { Mode = BindingMode.TwoWay },
                     Template = CreateTemplate()  
                 };
                 DataValidationErrors.SetErrorConverter(target, err => "Error: " + err);
@@ -81,9 +86,9 @@ namespace Avalonia.Controls.UnitTests
 
                 target.Text = "20";
 
-                IEnumerable<object> errors = DataValidationErrors.GetErrors(target);
-                Assert.Single(errors);
-                var error = Assert.IsType<string>(errors.Single());
+                var errors = DataValidationErrors.GetErrors(target);
+                Assert.NotNull(errors);
+                var error = Assert.IsType<string>(Assert.Single(errors));
                 Assert.StartsWith("Error: ", error);
             }
         }
@@ -96,7 +101,7 @@ namespace Avalonia.Controls.UnitTests
                 var target = new TextBox
                 {
                     DataContext = new ExceptionTest(),
-                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10), BindingMode.TwoWay),
+                    [!TextBox.TextProperty] = new Binding(nameof(ExceptionTest.LessThan10)) { Mode = BindingMode.TwoWay },
                     Template = CreateTemplate(),
                 };
 
@@ -110,9 +115,43 @@ namespace Avalonia.Controls.UnitTests
             }
         }
 
+        [Fact]
+        public void CompiledBindings_TypeConverter_Exceptions_Should_Set_DataValidationErrors_HasErrors()
+        {
+            var path = new CompiledBindingPathBuilder()
+            .Property(
+                new ClrPropertyInfo(
+                    nameof(ExceptionTest.LessThan10),
+                    target => ((ExceptionTest)target).LessThan10,
+                    (target, value) => ((ExceptionTest)target).LessThan10 = (int)value!,
+                    typeof(int)),
+                PropertyInfoAccessorFactory.CreateInpcPropertyAccessor)
+            .Build();
+
+            using (UnitTestApplication.Start(Services))
+            {
+                var target = new TextBox
+                {
+                    DataContext = new ExceptionTest(),
+                    [!TextBox.TextProperty] = new CompiledBindingExtension
+                    {
+                        Source = new ExceptionTest(),
+                        Path = path,
+                        Mode = BindingMode.TwoWay
+                    },
+                    Template = CreateTemplate(),
+                };
+
+                target.ApplyTemplate();
+
+                target.Text = "a";
+                Assert.True(DataValidationErrors.GetHasErrors(target));
+            }
+        }
+
         private static TestServices Services => TestServices.MockThreadingInterface.With(
             standardCursorFactory: Mock.Of<ICursorFactory>(),
-            textShaperImpl: new HeadlessTextShaperStub(),
+            textShaperImpl: new HarfBuzzTextShaper(),
             fontManagerImpl: new HeadlessFontManagerStub());
 
         private static IControlTemplate CreateTemplate()
@@ -178,13 +217,13 @@ namespace Avalonia.Controls.UnitTests
 
             public bool HasErrors => _lessThan10 >= 10;
 
-            public event EventHandler<DataErrorsChangedEventArgs> ErrorsChanged;
+            public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
-            public IEnumerable GetErrors(string propertyName)
+            public IEnumerable GetErrors(string? propertyName)
             {
-                IList<string> result;
-                _errors.TryGetValue(propertyName, out result);
-                return result;
+                if (propertyName is not null && _errors.TryGetValue(propertyName, out var result))
+                    return result;
+                return Array.Empty<string?>();
             }
         }
     }

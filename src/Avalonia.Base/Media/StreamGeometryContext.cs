@@ -34,14 +34,12 @@ namespace Avalonia.Media
             _impl.SetFillRule(fillRule);
         }
 
-
-        /// <inheritdoc/>
-        public void ArcTo(Point point, Size size, double rotationAngle, bool isLargeArc, SweepDirection sweepDirection)
+        /// <inheritdoc />
+        public void ArcTo(Point point, Size size, double rotationAngle, bool isLargeArc, SweepDirection sweepDirection, bool isStroked = true)
         {
-            _impl.ArcTo(point, size, rotationAngle, isLargeArc, sweepDirection);
+            _impl.ArcTo(point, size, rotationAngle, isLargeArc, sweepDirection, isStroked);
             _currentPoint = point;
         }
-
 
         /// <summary>
         /// Draws an arc to the specified point using polylines, quadratic or cubic Bezier curves
@@ -59,34 +57,32 @@ namespace Avalonia.Media
             PreciseEllipticArcHelper.ArcTo(this, _currentPoint, point, size, rotationAngle, isLargeArc, sweepDirection);
         }
 
-
         /// <inheritdoc/>
-        public void BeginFigure(Point startPoint, bool isFilled)
+        public void BeginFigure(Point startPoint, bool isFilled = true)
         {
             _impl.BeginFigure(startPoint, isFilled);
             _currentPoint = startPoint;
         }
 
         /// <inheritdoc/>
-        public void CubicBezierTo(Point controlPoint1, Point controlPoint2, Point endPoint)
+        public void CubicBezierTo(Point controlPoint1, Point controlPoint2, Point endPoint, bool isStroked = true)
         {
-            _impl.CubicBezierTo(controlPoint1, controlPoint2, endPoint);
+            _impl.CubicBezierTo(controlPoint1, controlPoint2, endPoint, isStroked);
             _currentPoint = endPoint;
         }
 
         /// <inheritdoc/>
-        public void QuadraticBezierTo(Point controlPoint , Point endPoint)
+        public void QuadraticBezierTo(Point controlPoint, Point endPoint, bool isStroked = true)
         {
-            _impl.QuadraticBezierTo(controlPoint , endPoint);
+            _impl.QuadraticBezierTo(controlPoint, endPoint, isStroked);
             _currentPoint = endPoint;
         }
 
-
         /// <inheritdoc/>
-        public void LineTo(Point endPoint)
+        public void LineTo(Point point, bool isStroked = true)
         {
-            _impl.LineTo(endPoint);
-            _currentPoint = endPoint;
+            _impl.LineTo(point, isStroked);
+            _currentPoint = point;
         }
 
         /// <inheritdoc/>

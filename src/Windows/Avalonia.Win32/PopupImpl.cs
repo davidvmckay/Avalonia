@@ -1,7 +1,10 @@
 using System;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Primitives.PopupPositioning;
+using Avalonia.Input;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Avalonia.Win32.Interop;
 
 namespace Avalonia.Win32
@@ -23,24 +26,6 @@ namespace Avalonia.Win32
             // Popups are always shown non-activated.
             UnmanagedMethods.ShowWindow(Handle.Handle, UnmanagedMethods.ShowWindowCommand.ShowNoActivate);
 
-            // We need to steal focus if it's held by a child window of our toplevel window
-            var parent = _parent;
-            while(parent != null)
-            {
-                if(parent is PopupImpl pi)
-                   parent = pi._parent;
-                else
-                    break;
-            }
-
-            if(parent == null)
-                return;
-
-            var focusOwner = UnmanagedMethods.GetFocus();
-            if (focusOwner != IntPtr.Zero &&
-                UnmanagedMethods.GetAncestor(focusOwner, UnmanagedMethods.GetAncestorFlags.GA_ROOT)
-                == parent.Handle.Handle)
-                UnmanagedMethods.SetFocus(parent.Handle.Handle);
         }
 
         protected override bool ShouldTakeFocusOnClick => false;
@@ -51,15 +36,11 @@ namespace Avalonia.Win32
             {
                 if (_maxAutoSize is null)
                 {
-                    var monitor = UnmanagedMethods.MonitorFromWindow(
-                        Hwnd,
-                        UnmanagedMethods.MONITOR.MONITOR_DEFAULTTONEAREST);
+                    var screen = base.Screen.ScreenFromHwnd(Hwnd, UnmanagedMethods.MONITOR.MONITOR_DEFAULTTONEAREST);
                     
-                    if (monitor != IntPtr.Zero)
+                    if (screen is not null)
                     {
-                        var info = UnmanagedMethods.MONITORINFO.Create();
-                        UnmanagedMethods.GetMonitorInfo(monitor, ref info);
-                        _maxAutoSize = info.rcWork.ToPixelRect().ToRect(RenderScaling).Size;
+                        _maxAutoSize = screen.WorkingArea.ToRect(RenderScaling).Size;
                     }
                 }
 
@@ -75,8 +56,7 @@ namespace Avalonia.Win32
                 UnmanagedMethods.WindowStyles.WS_CLIPCHILDREN;
 
             UnmanagedMethods.WindowStyles exStyle =
-                UnmanagedMethods.WindowStyles.WS_EX_TOOLWINDOW |
-                UnmanagedMethods.WindowStyles.WS_EX_TOPMOST;
+                UnmanagedMethods.WindowStyles.WS_EX_TOOLWINDOW;
 
             var result = UnmanagedMethods.CreateWindowEx(
                 (int)exStyle,
@@ -116,7 +96,7 @@ namespace Avalonia.Win32
         // One fabulous design decision leads to another, I guess
         private static IWindowBaseImpl SaveParentHandle(IWindowBaseImpl parent)
         {
-            s_parentHandle = parent.Handle.Handle;
+            s_parentHandle = parent.Handle!.Handle;
             return parent;
         }
 
@@ -133,7 +113,9 @@ namespace Avalonia.Win32
             {
                 ShowInTaskbar = false,
                 IsResizable = false,
-                Decorations = SystemDecorations.None,
+                IsMinimizable = false,
+                IsMaximizable = false,
+                Decorations = WindowDecorations.None,
             };
 
             _parent = parent;
@@ -168,6 +150,28 @@ namespace Avalonia.Win32
             _dropShadowHint = enabled;
 
             EnableBoxShadow(Handle.Handle, enabled);
+        }
+
+        public void TakeFocus()
+        {
+            var parent = _parent;
+
+            while (parent != null)
+            {
+                if (parent is PopupImpl pi)
+                    parent = pi._parent;
+                else
+                    break;
+            }
+
+            if (parent == null)
+                return;
+
+            var focusOwner = UnmanagedMethods.GetFocus();
+            if (focusOwner != IntPtr.Zero &&
+                UnmanagedMethods.GetAncestor(focusOwner, UnmanagedMethods.GetAncestorFlags.GA_ROOT)
+                == parent.Handle?.Handle)
+                UnmanagedMethods.SetFocus(parent.Handle.Handle);
         }
 
         public IPopupPositioner PopupPositioner { get; }

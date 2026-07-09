@@ -32,13 +32,13 @@ namespace Avalonia.Build.Tasks
                 ProjectDirectory, VerifyIl, DefaultCompileBindings, outputImportance,
                 new XamlCompilerDiagnosticsFilter(AnalyzerConfigFiles),
                 (SignAssembly && !DelaySign) ? AssemblyOriginatorKeyFile : null,
-                SkipXamlCompilation, DebuggerLaunch, VerboseExceptions);
+                SkipXamlCompilation, DebuggerLaunch, VerboseExceptions, CreateSourceInfo);
 
             if (res.Success && !res.WrittenFile)
             {
                 // To simplify incremental build checks, copy the input files to the expected output locations even if the Xaml compiler didn't do anything.
                 CopyAndTouch(AssemblyFile.ItemSpec, outputPath);
-                CopyAndTouch(Path.ChangeExtension(AssemblyFile.ItemSpec, ".pdb"), Path.ChangeExtension(outputPath, ".pdb"));
+                CopyAndTouch(Path.ChangeExtension(AssemblyFile.ItemSpec, ".pdb"), Path.ChangeExtension(outputPath, ".pdb"), false);
 
                 if (!string.IsNullOrEmpty(refOutputPath))
                 {
@@ -49,10 +49,27 @@ namespace Avalonia.Build.Tasks
             return res.Success;
         }
 
-        private static void CopyAndTouch(string source, string destination)
+        private static void CopyAndTouch(string source, string destination, bool shouldExist = true)
         {
-            File.Copy(source, destination, overwrite: true);
-            File.SetLastWriteTimeUtc(destination, DateTime.UtcNow);
+            var normalizedSource = Path.GetFullPath(source);
+            var normalizedDestination = Path.GetFullPath(destination);
+
+            if (!File.Exists(normalizedSource))
+            {
+                if (shouldExist)
+                {
+                    throw new FileNotFoundException($"Could not copy file '{normalizedSource}'. File does not exist.");
+                }
+
+                return;
+            }
+
+            if (normalizedSource != normalizedDestination)
+            {
+                File.Copy(normalizedSource, normalizedDestination, overwrite: true);
+            }
+
+            File.SetLastWriteTimeUtc(normalizedDestination, DateTime.UtcNow);
         }
 
         [Required]
@@ -81,6 +98,8 @@ namespace Avalonia.Build.Tasks
         public ITaskHost HostObject { get; set; }
 
         public bool DebuggerLaunch { get; set; }
+
+        public bool CreateSourceInfo { get; set; }
 
         public bool VerboseExceptions { get; set; }
 

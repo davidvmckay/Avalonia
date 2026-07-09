@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows.Input;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls.Metadata;
+using Avalonia.Controls.Platform;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Input;
@@ -34,8 +35,10 @@ namespace Avalonia.Controls
     [PseudoClasses(pcFlyoutOpen, pcPressed)]
     public class Button : ContentControl, ICommandSource, IClickableControl
     {
-        private const string pcPressed    = ":pressed";
+        private const string pcPressed = ":pressed";
         private const string pcFlyoutOpen = ":flyout-open";
+        private EventHandler? _canExecuteChangeHandler = default;
+        private EventHandler CanExecuteChangedHandler => _canExecuteChangeHandler ??= new(CanExecuteChanged);
 
         /// <summary>
         /// Defines the <see cref="ClickMode"/> property.
@@ -102,7 +105,8 @@ namespace Avalonia.Controls
         static Button()
         {
             FocusableProperty.OverrideDefaultValue(typeof(Button), true);
-            AccessKeyHandler.AccessKeyPressedEvent.AddClassHandler<Button>((lbl, args) => lbl.OnAccessKey(args));
+            PlatformFeedback.FeedbackTypeProperty.OverrideDefaultValue(typeof(Button), FeedbackType.Auto);
+            AccessKeyHandler.AccessKeyPressedEvent.AddClassHandler<Button>(OnAccessKeyPressed);
         }
 
         /// <summary>
@@ -197,7 +201,7 @@ namespace Avalonia.Controls
 
         /// <inheritdoc/>
         protected override bool IsEnabledCore => base.IsEnabledCore && _commandCanExecute;
-
+        
         /// <inheritdoc/>
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -205,14 +209,14 @@ namespace Avalonia.Controls
 
             if (IsDefault)
             {
-                if (e.Root is IInputElement inputElement)
+                if (e.RootVisual is IInputElement inputElement)
                 {
                     ListenForDefault(inputElement);
                 }
             }
             if (IsCancel)
             {
-                if (e.Root is IInputElement inputElement)
+                if (e.RootVisual is IInputElement inputElement)
                 {
                     ListenForCancel(inputElement);
                 }
@@ -226,14 +230,14 @@ namespace Avalonia.Controls
 
             if (IsDefault)
             {
-                if (e.Root is IInputElement inputElement)
+                if (e.RootVisual is IInputElement inputElement)
                 {
                     StopListeningForDefault(inputElement);
                 }
             }
             if (IsCancel)
             {
-                if (e.Root is IInputElement inputElement)
+                if (e.RootVisual is IInputElement inputElement)
                 {
                     StopListeningForCancel(inputElement);
                 }
@@ -250,10 +254,11 @@ namespace Avalonia.Controls
 
             base.OnAttachedToLogicalTree(e);
 
-            if (Command != null)
+            (var command, var parameter) = (Command, CommandParameter);
+            if (command is not null)
             {
-                Command.CanExecuteChanged += CanExecuteChanged;
-                CanExecuteChanged(this, EventArgs.Empty);
+                command.CanExecuteChanged += CanExecuteChangedHandler;
+                CanExecuteChanged(command, parameter);
             }
         }
 
@@ -269,13 +274,24 @@ namespace Avalonia.Controls
 
             base.OnDetachedFromLogicalTree(e);
 
-            if (Command != null)
+            if (Command is { } command)
             {
-                Command.CanExecuteChanged -= CanExecuteChanged;
+                command.CanExecuteChanged -= CanExecuteChangedHandler;
             }
         }
 
-        protected virtual void OnAccessKey(RoutedEventArgs e) => OnClick();
+        /// <inheritdoc />
+        protected override void OnAccessKey(RoutedEventArgs e)
+        {
+            if (e is AccessKeyEventArgs { IsMultiple: true })
+            {
+                base.OnAccessKey(e);
+            }
+            else
+            {
+                OnClick();    
+            }
+        }
 
         /// <inheritdoc/>
         protected override void OnKeyDown(KeyEventArgs e)
@@ -286,8 +302,9 @@ namespace Avalonia.Controls
                     OnClick();
                     e.Handled = true;
                     break;
-
                 case Key.Space:
+                    // Avoid handling Space if the button isn't focused: a child TextBox might need it for text input
+                    if (IsFocused)
                     {
                         if (ClickMode == ClickMode.Press)
                         {
@@ -296,22 +313,21 @@ namespace Avalonia.Controls
 
                         IsPressed = true;
                         e.Handled = true;
-                        break;
                     }
-
+                    break;
                 case Key.Escape when Flyout != null:
                     // If Flyout doesn't have focusable content, close the flyout here
                     CloseFlyout();
                     break;
             }
-
             base.OnKeyDown(e);
         }
 
         /// <inheritdoc/>
         protected override void OnKeyUp(KeyEventArgs e)
         {
-            if (e.Key == Key.Space)
+            // Avoid handling Space if the button isn't focused: a child TextBox might need it for text input
+            if (e.Key == Key.Space && IsFocused)
             {
                 if (ClickMode == ClickMode.Release)
                 {
@@ -340,12 +356,15 @@ namespace Avalonia.Controls
                     OpenFlyout();
                 }
 
+                this.PerformFeedback(FeedbackAction.Click);
+
                 var e = new RoutedEventArgs(ClickEvent);
                 RaiseEvent(e);
 
-                if (!e.Handled && Command?.CanExecute(CommandParameter) == true)
+                (var command, var parameter) = (Command, CommandParameter);
+                if (!e.Handled && command is not null && command.CanExecute(parameter))
                 {
-                    Command.Execute(CommandParameter);
+                    command.Execute(parameter);
                     e.Handled = true;
                 }
             }
@@ -390,12 +409,22 @@ namespace Avalonia.Controls
 
             if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             {
-                IsPressed = true;
-                e.Handled = true;
-
-                if (ClickMode == ClickMode.Press)
+                if (_isFlyoutOpen && IsEffectivelyEnabled)
                 {
+                    // When a flyout is open with OverlayDismissEventPassThrough enabled and the button is pressed,
+                    // close the flyout, but do not transition to a pressed state
+                    e.Handled = true;
                     OnClick();
+                }
+                else
+                {
+                    IsPressed = true;
+                    e.Handled = true;
+
+                    if (ClickMode == ClickMode.Press)
+                    {
+                        OnClick();
+                    }
                 }
             }
         }
@@ -427,7 +456,7 @@ namespace Avalonia.Controls
         }
 
         /// <inheritdoc/>
-        protected override void OnLostFocus(RoutedEventArgs e)
+        protected override void OnLostFocus(FocusChangedEventArgs e)
         {
             base.OnLostFocus(e);
 
@@ -451,25 +480,24 @@ namespace Avalonia.Controls
 
             if (change.Property == CommandProperty)
             {
+                var (oldValue, newValue) = change.GetOldAndNewValue<ICommand?>();
                 if (((ILogical)this).IsAttachedToLogicalTree)
                 {
-                    var (oldValue, newValue) = change.GetOldAndNewValue<ICommand?>();
                     if (oldValue is ICommand oldCommand)
                     {
-                        oldCommand.CanExecuteChanged -= CanExecuteChanged;
+                        oldCommand.CanExecuteChanged -= CanExecuteChangedHandler;
                     }
 
                     if (newValue is ICommand newCommand)
                     {
-                        newCommand.CanExecuteChanged += CanExecuteChanged;
+                        newCommand.CanExecuteChanged += CanExecuteChangedHandler;
                     }
                 }
-
-                CanExecuteChanged(this, EventArgs.Empty);
+                CanExecuteChanged(newValue, CommandParameter);
             }
             else if (change.Property == CommandParameterProperty)
             {
-                CanExecuteChanged(this, EventArgs.Empty);
+                CanExecuteChanged(Command, change.NewValue);
             }
             else if (change.Property == IsCancelProperty)
             {
@@ -518,11 +546,21 @@ namespace Avalonia.Controls
                     oldFlyout.Hide();
                 }
 
+                (oldFlyout as PopupFlyoutBase)?.SetDefaultPlacementTarget(null);
+
                 // Must unregister events here while a reference to the old flyout still exists
                 UnregisterFlyoutEvents(oldFlyout);
 
                 RegisterFlyoutEvents(newFlyout);
+                (newFlyout as PopupFlyoutBase)?.SetDefaultPlacementTarget(this);
                 UpdatePseudoClasses();
+            }
+            else if (change.Property == IsEffectivelyEnabledProperty)
+            {
+                if (!change.GetNewValue<bool>())
+                {
+                    IsPressed = false;
+                }
             }
         }
 
@@ -547,9 +585,17 @@ namespace Avalonia.Controls
                 }
             }
         }
-
+        
         internal void PerformClick() => OnClick();
 
+        private static void OnAccessKeyPressed(Button sender, AccessKeyPressedEventArgs e)
+        {
+            if (e.Handled || e.Target is not null) 
+                return;
+            e.Target = sender;
+            e.Handled = true;
+        }
+        
         /// <summary>
         /// Called when the <see cref="ICommand.CanExecuteChanged"/> event fires.
         /// </summary>
@@ -557,7 +603,18 @@ namespace Avalonia.Controls
         /// <param name="e">The event args.</param>
         private void CanExecuteChanged(object? sender, EventArgs e)
         {
-            var canExecute = Command == null || Command.CanExecute(CommandParameter);
+            CanExecuteChanged(Command, CommandParameter);
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        private void CanExecuteChanged(ICommand? command, object? parameter)
+        {
+            if (!((ILogical)this).IsAttachedToLogicalTree)
+            {
+                return;
+            }
+
+            var canExecute = command == null || command.CanExecute(parameter);
 
             if (canExecute != _commandCanExecute)
             {
@@ -635,7 +692,7 @@ namespace Avalonia.Controls
         /// <param name="e">The event args.</param>
         private void RootDefaultKeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter && IsVisible && IsEnabled)
+            if (e.Key == Key.Enter && IsEffectivelyVisible && IsEffectivelyEnabled)
             {
                 OnClick();
                 e.Handled = true;
@@ -649,7 +706,7 @@ namespace Avalonia.Controls
         /// <param name="e">The event args.</param>
         private void RootCancelKeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Escape && IsVisible && IsEnabled)
+            if (e.Key == Key.Escape && IsEffectivelyVisible && IsEffectivelyEnabled)
             {
                 OnClick();
                 e.Handled = true;

@@ -1,6 +1,6 @@
 using System;
-using System.Linq;
 using Avalonia;
+using IntegrationTestApp.Embedding;
 
 namespace IntegrationTestApp
 {
@@ -31,6 +31,16 @@ namespace IntegrationTestApp
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
+#if DEBUG
+                .WithDeveloperTools()
+#endif
+                .AfterSetup(builder =>
+                {
+                    NativeTextBox.Factory = 
+                        OperatingSystem.IsWindows() ? new Win32TextBoxFactory() :
+                        OperatingSystem.IsMacOS() ? new MacOSTextBoxFactory() :
+                        null;
+                })
                 .LogToTrace();
     }
 }

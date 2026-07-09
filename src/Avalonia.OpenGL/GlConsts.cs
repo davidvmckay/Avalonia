@@ -20,7 +20,7 @@ namespace Avalonia.OpenGL
 //        public const int GL_LINE_STRIP = 0x0003;
         public const int GL_TRIANGLES = 0x0004;
 //        public const int GL_TRIANGLE_STRIP = 0x0005;
-//        public const int GL_TRIANGLE_FAN = 0x0006;
+        public const int GL_TRIANGLE_FAN = 0x0006;
 //        public const int GL_QUADS = 0x0007;
 //        public const int GL_QUAD_STRIP = 0x0008;
 //        public const int GL_POLYGON = 0x0009;
@@ -85,12 +85,12 @@ namespace Avalonia.OpenGL
 //        public const int GL_CW = 0x0900;
 //        public const int GL_CCW = 0x0901;
 //        public const int GL_FRONT = 0x0404;
-//        public const int GL_BACK = 0x0405;
+        public const int GL_BACK = 0x0405;
 //        public const int GL_POLYGON_MODE = 0x0B40;
 //        public const int GL_POLYGON_SMOOTH = 0x0B41;
 //        public const int GL_POLYGON_STIPPLE = 0x0B42;
 //        public const int GL_EDGE_FLAG = 0x0B43;
-//        public const int GL_CULL_FACE = 0x0B44;
+        public const int GL_CULL_FACE = 0x0B44;
 //        public const int GL_CULL_FACE_MODE = 0x0B45;
 //        public const int GL_FRONT_FACE = 0x0B46;
 //        public const int GL_POLYGON_OFFSET_FACTOR = 0x8038;
@@ -104,10 +104,10 @@ namespace Avalonia.OpenGL
 //        public const int GL_LIST_INDEX = 0x0B33;
 //        public const int GL_LIST_MODE = 0x0B30;
 //        public const int GL_NEVER = 0x0200;
-//        public const int GL_LESS = 0x0201;
+        public const int GL_LESS = 0x0201;
 //        public const int GL_EQUAL = 0x0202;
 //        public const int GL_LEQUAL = 0x0203;
-//        public const int GL_GREATER = 0x0204;
+        public const int GL_GREATER = 0x0204;
 //        public const int GL_NOTEQUAL = 0x0205;
 //        public const int GL_GEQUAL = 0x0206;
 //        public const int GL_ALWAYS = 0x0207;
@@ -359,7 +359,7 @@ namespace Avalonia.OpenGL
 //        public const int GL_FASTEST = 0x1101;
 //        public const int GL_NICEST = 0x1102;
 //        public const int GL_SCISSOR_BOX = 0x0C10;
-//        public const int GL_SCISSOR_TEST = 0x0C11;
+        public const int GL_SCISSOR_TEST = 0x0C11;
 //        public const int GL_MAP_COLOR = 0x0D10;
 //        public const int GL_MAP_STENCIL = 0x0D11;
 //        public const int GL_INDEX_SHIFT = 0x0D12;
@@ -412,8 +412,8 @@ namespace Avalonia.OpenGL
 //        public const int GL_TEXTURE_ENV_MODE = 0x2200;
 //        public const int GL_TEXTURE_1D = 0x0DE0;
         public const int GL_TEXTURE_2D = 0x0DE1;
-//        public const int GL_TEXTURE_WRAP_S = 0x2802;
-//        public const int GL_TEXTURE_WRAP_T = 0x2803;
+        public const int GL_TEXTURE_WRAP_S = 0x2802;
+        public const int GL_TEXTURE_WRAP_T = 0x2803;
         public const int GL_TEXTURE_MAG_FILTER = 0x2800;
         public const int GL_TEXTURE_MIN_FILTER = 0x2801;
 //        public const int GL_TEXTURE_ENV_COLOR = 0x2201;
@@ -530,7 +530,7 @@ namespace Avalonia.OpenGL
 //        public const int GL_ALL_CLIENT_ATTRIB_BITS = -1;
 //        public const int GL_CLIENT_ALL_ATTRIB_BITS = -1;
 //        public const int GL_RESCALE_NORMAL = 0x803A;
-//        public const int GL_CLAMP_TO_EDGE = 0x812F;
+        public const int GL_CLAMP_TO_EDGE = 0x812F;
 //        public const int GL_MAX_ELEMENTS_VERTICES = 0x80E8;
 //        public const int GL_MAX_ELEMENTS_INDICES = 0x80E9;
 //        public const int GL_BGR = 0x80E0;
@@ -544,7 +544,7 @@ namespace Avalonia.OpenGL
 //        public const int GL_UNSIGNED_SHORT_5_5_5_1 = 0x8034;
 //        public const int GL_UNSIGNED_SHORT_1_5_5_5_REV = 0x8366;
 //        public const int GL_UNSIGNED_INT_8_8_8_8 = 0x8035;
-//        public const int GL_UNSIGNED_INT_8_8_8_8_REV = 0x8367;
+        public const int GL_UNSIGNED_INT_8_8_8_8_REV = 0x8367;
 //        public const int GL_UNSIGNED_INT_10_10_10_2 = 0x8036;
 //        public const int GL_UNSIGNED_INT_2_10_10_10_REV = 0x8368;
 //        public const int GL_LIGHT_MODEL_COLOR_CONTROL = 0x81F8;
@@ -1231,8 +1231,8 @@ namespace Avalonia.OpenGL
 //        public const int GL_MAX_TEXTURE_BUFFER_SIZE = 0x8C2B;
 //        public const int GL_TEXTURE_BINDING_BUFFER = 0x8C2C;
 //        public const int GL_TEXTURE_BUFFER_DATA_STORE_BINDING = 0x8C2D;
-//        public const int GL_TEXTURE_RECTANGLE = 0x84F5;
-//        public const int GL_TEXTURE_BINDING_RECTANGLE = 0x84F6;
+        public const int GL_TEXTURE_RECTANGLE = 0x84F5;
+        public const int GL_TEXTURE_BINDING_RECTANGLE = 0x84F6;
 //        public const int GL_PROXY_TEXTURE_RECTANGLE = 0x84F7;
 //        public const int GL_MAX_RECTANGLE_TEXTURE_SIZE = 0x84F8;
 //        public const int GL_R8_SNORM = 0x8F94;
@@ -1282,8 +1282,8 @@ namespace Avalonia.OpenGL
 //        public const int GL_UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER = 0x8A46;
 //        public const int GL_INVALID_INDEX = -1;
 //        public const int GL_VERSION_3_2 = 1;
-//        public const int GL_CONTEXT_CORE_PROFILE_BIT = 0x00000001;
-//        public const int GL_CONTEXT_COMPATIBILITY_PROFILE_BIT = 0x00000002;
+        public const int GL_CONTEXT_CORE_PROFILE_BIT = 0x00000001;
+        public const int GL_CONTEXT_COMPATIBILITY_PROFILE_BIT = 0x00000002;
 //        public const int GL_LINES_ADJACENCY = 0x000A;
 //        public const int GL_LINE_STRIP_ADJACENCY = 0x000B;
 //        public const int GL_TRIANGLES_ADJACENCY = 0x000C;
@@ -1303,7 +1303,7 @@ namespace Avalonia.OpenGL
 //        public const int GL_MAX_GEOMETRY_INPUT_COMPONENTS = 0x9123;
 //        public const int GL_MAX_GEOMETRY_OUTPUT_COMPONENTS = 0x9124;
 //        public const int GL_MAX_FRAGMENT_INPUT_COMPONENTS = 0x9125;
-//        public const int GL_CONTEXT_PROFILE_MASK = 0x9126;
+        public const int GL_CONTEXT_PROFILE_MASK = 0x9126;
 //        public const int GL_DEPTH_CLAMP = 0x864F;
 //        public const int GL_QUADS_FOLLOW_PROVOKING_VERTEX_CONVENTION = 0x8E4C;
 //        public const int GL_FIRST_VERTEX_CONVENTION = 0x8E4D;

@@ -1,3 +1,4 @@
+using Avalonia.Markup.Xaml.XamlIl.CompilerExtensions.Transformers;
 using XamlX.Transform;
 using XamlX.TypeSystem;
 
@@ -9,16 +10,17 @@ namespace Avalonia.Markup.Xaml.XamlIl.CompilerExtensions
         public XamlIlPropertyInfoAccessorFactoryEmitter AccessorFactoryEmitter { get; }
         public XamlIlTrampolineBuilder TrampolineBuilder { get; }
 
-        public AvaloniaXamlIlCompilerConfiguration(IXamlTypeSystem typeSystem, 
-            IXamlAssembly defaultAssembly, 
+        public AvaloniaXamlIlCompilerConfiguration(
+            IXamlTypeSystem typeSystem,
+            IXamlAssembly? defaultAssembly,
             XamlLanguageTypeMappings typeMappings,
-            XamlXmlnsMappings xmlnsMappings,
-            XamlValueConverter customValueConverter,
+            XamlXmlnsMappings? xmlnsMappings,
+            XamlValueConverter? customValueConverter,
             XamlIlClrPropertyInfoEmitter clrPropertyEmitter,
             XamlIlPropertyInfoAccessorFactoryEmitter accessorFactoryEmitter,
             XamlIlTrampolineBuilder trampolineBuilder,
-            IXamlIdentifierGenerator identifierGenerator,
-            XamlDiagnosticsHandler diagnosticsHandler)
+            IXamlIdentifierGenerator? identifierGenerator,
+            XamlDiagnosticsHandler? diagnosticsHandler)
             : base(typeSystem, defaultAssembly, typeMappings, xmlnsMappings, customValueConverter, identifierGenerator, diagnosticsHandler)
         {
             ClrPropertyEmitter = clrPropertyEmitter;
@@ -27,6 +29,7 @@ namespace Avalonia.Markup.Xaml.XamlIl.CompilerExtensions
             AddExtra(ClrPropertyEmitter);
             AddExtra(AccessorFactoryEmitter);
             AddExtra(TrampolineBuilder);
+            AddExtra(new AvaloniaXamlIlWellKnownTypes(TypeSystem));
         }
     }
 }

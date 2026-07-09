@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -6,13 +7,9 @@ using MicroCom.Runtime;
 
 namespace Avalonia.Win32.WinRT
 {
-    internal class WinRTInspectable : IInspectable, IMicroComShadowContainer
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+    internal class WinRTInspectable : Avalonia.MicroCom.CallbackBase, IInspectable
     {
-        public virtual void Dispose()
-        {
-            
-        }
-
         public unsafe void GetIids(ulong* iidCount, Guid** iids)
         {
             var interfaces = GetType().GetInterfaces().Where(typeof(IUnknown).IsAssignableFrom)
@@ -26,13 +23,5 @@ namespace Avalonia.Win32.WinRT
 
         public IntPtr RuntimeClassName => NativeWinRTMethods.WindowsCreateString(GetType().FullName!);
         public TrustLevel TrustLevel => TrustLevel.BaseTrust;
-        public MicroComShadow? Shadow { get; set; }
-        public virtual void OnReferencedFromNative()
-        {
-        }
-
-        public virtual void OnUnreferencedFromNative()
-        {
-        }
     }
 }

@@ -7,6 +7,7 @@ using Avalonia.Reactive;
 namespace Avalonia.Data.Core.ExpressionNodes.Reflection;
 
 [RequiresUnreferencedCode(TrimmingMessages.ExpressionNodeRequiresUnreferencedCodeMessage)]
+[RequiresDynamicCode(TrimmingMessages.ExpressionNodeRequiresDynamicCodeMessage)]
 internal sealed class DynamicPluginStreamNode : ExpressionNode
 {
     private IDisposable? _subscription;
@@ -16,8 +17,11 @@ internal sealed class DynamicPluginStreamNode : ExpressionNode
         builder.Append('^');
     }
 
-    protected override void OnSourceChanged(object source, Exception? dataValidationError)
+    protected override void OnSourceChanged(object? source, Exception? dataValidationError)
     {
+        if (!ValidateNonNullSource(source))
+            return;
+
         var reference = new WeakReference<object?>(source);
 
         if (GetPlugin(reference) is { } plugin &&

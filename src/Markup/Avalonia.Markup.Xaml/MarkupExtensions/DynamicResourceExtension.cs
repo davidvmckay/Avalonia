@@ -2,11 +2,13 @@
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Data.Core;
+using Avalonia.Markup.Xaml.XamlIl.Runtime;
+using Avalonia.Metadata;
 using Avalonia.Styling;
 
 namespace Avalonia.Markup.Xaml.MarkupExtensions
 {
-    public class DynamicResourceExtension : IBinding2
+    public sealed class DynamicResourceExtension : BindingBase
     {
         private object? _anchor;
         private BindingPriority _priority;
@@ -21,9 +23,10 @@ namespace Avalonia.Markup.Xaml.MarkupExtensions
             ResourceKey = resourceKey;
         }
 
+        [ConstructorArgument("resourceKey")]
         public object? ResourceKey { get; set; }
 
-        public IBinding ProvideValue(IServiceProvider serviceProvider)
+        public BindingBase ProvideValue(IServiceProvider serviceProvider)
         {
             if (serviceProvider.IsInControlTemplate())
                 _priority = BindingPriority.Template;
@@ -37,24 +40,13 @@ namespace Avalonia.Markup.Xaml.MarkupExtensions
                     (object?)serviceProvider.GetFirstParent<IResourceHost>();
             }
 
-            _themeVariant = StaticResourceExtension.GetDictionaryVariant(serviceProvider);
+            _themeVariant = StaticResourceExtension.GetDictionaryVariant(
+                serviceProvider.GetService<IAvaloniaXamlIlParentStackProvider>());
 
             return this;
         }
 
-        InstancedBinding? IBinding.Initiate(
-            AvaloniaObject target,
-            AvaloniaProperty? targetProperty,
-            object? anchor,
-            bool enableDataValidation)
-        {
-            if (ResourceKey is null)
-                return null;
-            var expression = new DynamicResourceExpression(ResourceKey, _anchor, _themeVariant, _priority);
-            return new InstancedBinding(target, expression, BindingMode.OneWay, _priority);
-        }
-
-        BindingExpressionBase IBinding2.Instance(AvaloniaObject target, AvaloniaProperty targetProperty, object? anchor)
+        internal override BindingExpressionBase CreateInstance(AvaloniaObject target, AvaloniaProperty? targetProperty, object? anchor)
         {
             if (ResourceKey is null)
                 throw new InvalidOperationException("DynamicResource must have a ResourceKey.");
